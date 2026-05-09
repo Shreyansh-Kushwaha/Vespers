@@ -35,7 +35,7 @@ const RITUALS: Ritual[] = [
 ];
 
 function Illustration({ kind }: { kind: Ritual["ill"] }) {
-  const stroke = "#161412";
+  const stroke = "#0B1A33";
   if (kind === "candle") {
     return (
       <svg viewBox="0 0 120 120" width="100%" height="100%" aria-hidden>

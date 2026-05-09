@@ -47,6 +47,14 @@ export async function getSession(code: string): Promise<SessionMemory | null> {
   return store.sessions[code] ?? null;
 }
 
+export async function deleteSession(code: string): Promise<boolean> {
+  const store = await ensureStore();
+  if (!store.sessions[code]) return false;
+  delete store.sessions[code];
+  await writeStore(store);
+  return true;
+}
+
 export async function createSession(code: string): Promise<SessionMemory> {
   const store = await ensureStore();
   const now = Date.now();

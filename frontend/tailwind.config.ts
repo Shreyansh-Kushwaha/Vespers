@@ -16,16 +16,18 @@ export default {
           800: "#0f1430",
           700: "#161c44",
         },
-        // Marketing (light) palette — paper, ink, ritual
-        paper: "#F6F2EA",
-        paperDeep: "#EFEADC",
-        ink: "#161412",
-        inkSoft: "#2A2622",
-        margin: "#6F665B",
-        rule: "rgba(22,20,18,0.12)",
-        aubergine: "#4A2A4F",
-        violetInk: "#322A6E",
-        blush: "#E8C9C0",
+        // Light palette — peach-cream paper + dark navy brand.
+        // Token names kept (aubergine / violetInk) for source compatibility,
+        // but they now resolve to the navy brand values.
+        paper: "#FFE6C9",      // warm peach-orange background
+        paperDeep: "#FBD3A8",  // deeper orange for surfaces & hover
+        ink: "#0B1A33",        // navy-leaning text (matches brand)
+        inkSoft: "#1F2B47",    // secondary text
+        margin: "#7A6651",     // warm brown-grey for margin notes
+        rule: "rgba(11,26,51,0.12)",
+        aubergine: "#0B2545",  // BRAND — deep navy blue
+        violetInk: "#061633",  // darker navy for hover/pressed
+        blush: "#F4C9B5",      // warm peach accent
       },
       fontFamily: {
         sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],

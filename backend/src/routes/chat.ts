@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { stream } from "hono/streaming";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AzureOpenAI } from "openai";
 import { VESPERS_SYSTEM_PROMPT } from "../lib/prompt.js";
 import {
   appendMessages,
@@ -28,10 +28,14 @@ export async function chatHandler(c: Context) {
     return c.text("Invalid JSON", 400);
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+  const apiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-12-01-preview";
+
+  if (!apiKey || !endpoint || !deployment) {
     return c.text(
-      "Vespers is not configured yet. Add GEMINI_API_KEY to .env and restart the server.",
+      "Vespers is not configured yet. Set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_DEPLOYMENT in .env and restart the server.",
       503,
     );
   }
@@ -39,7 +43,6 @@ export async function chatHandler(c: Context) {
   const userText = (body.message || "").trim();
   if (!userText) return c.text("Empty message", 400);
 
-  // Resolve or create the session linked to a recovery code.
   let code = body.code ? normalizeCode(body.code) : null;
   let isNewSession = false;
   if (!code || !isRecoveryCode(code)) {
@@ -57,26 +60,25 @@ export async function chatHandler(c: Context) {
   const session = (await getSession(code))!;
   const contextHint = buildContextHint(session);
 
-  const MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: MODEL,
-    systemInstruction: contextHint
-      ? `${VESPERS_SYSTEM_PROMPT}\n\n${contextHint}`
-      : VESPERS_SYSTEM_PROMPT,
-    generationConfig: {
-      temperature: 0.85,
-      topP: 0.95,
-      maxOutputTokens: 700,
-    },
+  const client = new AzureOpenAI({
+    apiKey,
+    endpoint,
+    deployment,
+    apiVersion,
   });
 
-  const priorHistory = session.messages.map((m) => ({
-    role: m.role,
-    parts: [{ text: m.content }],
-  }));
+  const systemContent = contextHint
+    ? `${VESPERS_SYSTEM_PROMPT}\n\n${contextHint}`
+    : VESPERS_SYSTEM_PROMPT;
 
-  const chatSession = model.startChat({ history: priorHistory });
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+    { role: "system", content: systemContent },
+    ...session.messages.map((m) => ({
+      role: (m.role === "model" ? "assistant" : "user") as "user" | "assistant",
+      content: m.content,
+    })),
+    { role: "user", content: userText },
+  ];
 
   c.header("Content-Type", "text/plain; charset=utf-8");
   c.header("Cache-Control", "no-cache, no-transform");
@@ -87,9 +89,17 @@ export async function chatHandler(c: Context) {
   return stream(c, async (s) => {
     let full = "";
     try {
-      const result = await chatSession.sendMessageStream(userText);
-      for await (const chunk of result.stream) {
-        const text = chunk.text();
+      const completion = await client.chat.completions.create({
+        model: deployment,
+        messages,
+        stream: true,
+        temperature: 0.85,
+        top_p: 0.95,
+        max_completion_tokens: 700,
+      });
+
+      for await (const chunk of completion) {
+        const text = chunk.choices?.[0]?.delta?.content ?? "";
         if (text) {
           full += text;
           await s.write(text);

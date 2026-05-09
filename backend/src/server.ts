@@ -4,20 +4,23 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { chatHandler } from "./routes/chat.js";
-import { sessionHandler } from "./routes/session.js";
+import { sessionDeleteHandler, sessionHandler } from "./routes/session.js";
+import { transcribeHandler } from "./routes/transcribe.js";
 
 const app = new Hono();
 
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3030";
 const allowedOrigins = FRONTEND_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean);
-const MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-const HAS_KEY = Boolean(process.env.GEMINI_API_KEY?.trim());
+const DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT || "";
+const ENDPOINT = process.env.AZURE_OPENAI_ENDPOINT || "";
+const API_VERSION = process.env.AZURE_OPENAI_API_VERSION || "2024-12-01-preview";
+const HAS_KEY = Boolean(process.env.AZURE_OPENAI_API_KEY?.trim());
+const CONFIGURED = HAS_KEY && Boolean(ENDPOINT) && Boolean(DEPLOYMENT);
 
 app.use(
   "*",
   cors({
     origin: (origin) => {
-      // No origin (e.g. curl) is allowed; otherwise match the allowlist.
       if (!origin) return origin ?? "";
       return allowedOrigins.includes(origin) ? origin : "";
     },
@@ -39,14 +42,18 @@ app.get("/", (c) =>
 app.get("/health", (c) =>
   c.json({
     ok: true,
-    configured: HAS_KEY,
-    model: MODEL,
+    configured: CONFIGURED,
+    provider: "azure-openai",
+    deployment: DEPLOYMENT,
+    apiVersion: API_VERSION,
     corsAllowlist: allowedOrigins,
   }),
 );
 
 app.post("/api/chat", chatHandler);
 app.get("/api/session", sessionHandler);
+app.delete("/api/session", sessionDeleteHandler);
+app.post("/api/transcribe", transcribeHandler);
 
 const PORT = Number(process.env.PORT) || 8787;
 
@@ -54,16 +61,20 @@ serve({ fetch: app.fetch, port: PORT }, (info) => {
   const dataPath = path.join(process.cwd(), "data", "sessions.json");
   console.log("");
   console.log(`  vespers backend → http://localhost:${info.port}`);
-  console.log(`    model   : ${MODEL}`);
-  console.log(`    cors    : ${allowedOrigins.join(", ") || "(none)"}`);
-  console.log(`    memory  : ${dataPath}`);
-  if (HAS_KEY) {
-    console.log(`    api key : configured ✓`);
+  console.log(`    provider   : azure-openai`);
+  console.log(`    deployment : ${DEPLOYMENT || "(not set)"}`);
+  console.log(`    endpoint   : ${ENDPOINT || "(not set)"}`);
+  console.log(`    apiVersion : ${API_VERSION}`);
+  console.log(`    cors       : ${allowedOrigins.join(", ") || "(none)"}`);
+  console.log(`    memory     : ${dataPath}`);
+  if (CONFIGURED) {
+    console.log(`    api key    : configured ✓`);
   } else {
     console.log("");
-    console.log("    ⚠  GEMINI_API_KEY is not set.");
-    console.log("       /api/chat will return 503 until you add it to .env.");
-    console.log("       free key: https://aistudio.google.com/apikey");
+    console.log("    ⚠  Azure OpenAI is not fully configured.");
+    console.log("       Set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and");
+    console.log("       AZURE_OPENAI_DEPLOYMENT in .env. /api/chat will return 503");
+    console.log("       until all three are set.");
   }
   console.log("");
 });

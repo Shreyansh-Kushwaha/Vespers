@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChatInput } from "@/components/ChatInput";
 import { MessageBubble, type ChatRole } from "@/components/MessageBubble";
@@ -35,6 +35,9 @@ export default function Page() {
   const [streaming, setStreaming] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const isProgrammaticScrollRef = useRef(false);
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem(CODE_KEY) : null;
@@ -61,11 +64,39 @@ export default function Page() {
     }
   }, []);
 
+  // Track whether the user is parked near the bottom. Ignore programmatic scrolls.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages, streaming]);
+    const onScroll = () => {
+      if (isProgrammaticScrollRef.current) {
+        isProgrammaticScrollRef.current = false;
+        return;
+      }
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = distanceFromBottom < 120;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Pin to bottom synchronously whenever the inner content's height changes
+  // (every streamed chunk grows the assistant message). Using ResizeObserver +
+  // useLayoutEffect avoids the lag of a post-paint useEffect.
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    const content = contentRef.current;
+    if (!scroller || !content) return;
+    const pin = () => {
+      if (!stickToBottomRef.current) return;
+      isProgrammaticScrollRef.current = true;
+      scroller.scrollTop = scroller.scrollHeight;
+    };
+    pin();
+    const ro = new ResizeObserver(pin);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, []);
 
   const send = useCallback(
     async (text: string) => {
@@ -79,6 +110,7 @@ export default function Page() {
         content: "",
         pending: true,
       };
+      stickToBottomRef.current = true;
       setMessages((m) => [...m, userMsg, assistantMsg]);
       setInput("");
       setStreaming(true);
@@ -172,7 +204,16 @@ export default function Page() {
     }
   }, []);
 
-  const handleForget = useCallback(() => {
+  const handleForget = useCallback(async () => {
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(
+            "Forget this session?\n\nThis permanently deletes your stored chat history on the server and clears your recovery code from this device. It can't be undone.",
+          );
+    if (!confirmed) return;
+
+    const codeToDelete = code;
     setCode(null);
     setMessages([]);
     try {
@@ -180,12 +221,21 @@ export default function Page() {
     } catch {
       /* ignore */
     }
-  }, []);
+    if (codeToDelete) {
+      try {
+        await fetch(apiUrl(`/api/session?code=${encodeURIComponent(codeToDelete)}`), {
+          method: "DELETE",
+        });
+      } catch {
+        /* best-effort; the client side is already cleared */
+      }
+    }
+  }, [code]);
 
   const empty = hydrated && messages.length === 0;
 
   return (
-    <main className="relative min-h-dvh flex flex-col bg-paper text-ink">
+    <main className="relative h-dvh overflow-hidden flex flex-col bg-paper text-ink">
       <PaperSurface />
 
       {/* Header — wordmark + recovery code */}
@@ -216,7 +266,7 @@ export default function Page() {
         ref={scrollerRef}
         className="flex-1 overflow-y-auto px-6 sm:px-10 lg:px-16 pb-44"
       >
-        <div className="mx-auto w-full max-w-[820px] pt-12 sm:pt-20">
+        <div ref={contentRef} className="mx-auto w-full max-w-[820px] pt-12 sm:pt-20">
           <AnimatePresence>
             {empty && (
               <motion.div

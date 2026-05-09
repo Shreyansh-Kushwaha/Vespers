@@ -29,7 +29,7 @@ export function MovementOpen() {
                 <span key={label} className="flex items-center gap-x-4 sm:gap-x-6">
                   <span
                     className="eyebrow"
-                    style={{ color: "#4A2A4F", fontSize: "12px", letterSpacing: "0.24em" }}
+                    style={{ color: "#0B2545", fontSize: "12px", letterSpacing: "0.24em" }}
                   >
                     {label}
                   </span>

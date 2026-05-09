@@ -1,6 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export type ChatRole = "user" | "assistant";
 
@@ -10,13 +12,10 @@ interface Props {
   pending?: boolean;
 }
 
-/**
- * Transcript-style entry — paper theme. No bubbles. The speaker label sits in
- * the left margin (eyebrow caps), the message in the display serif on a
- * hairline-separated row.
- */
 export function MessageBubble({ role, content, pending }: Props) {
   const label = role === "user" ? "you" : "vespers";
+  const isUser = role === "user";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8, filter: "blur(6px)" }}
@@ -32,14 +31,32 @@ export function MessageBubble({ role, content, pending }: Props) {
             <span className="dot-paper" />
             <span className="dot-paper" />
           </div>
-        ) : (
-          <p
-            className={`display whitespace-pre-wrap break-words text-[16px] sm:text-[17px] leading-[1.7] ${
-              role === "user" ? "italic text-ink/90" : "text-inkSoft"
-            }`}
-          >
+        ) : isUser ? (
+          <p className="display whitespace-pre-wrap break-words text-[16px] sm:text-[17px] leading-[1.7] italic text-ink/90">
             {content}
           </p>
+        ) : (
+          <div
+            className={[
+              "display break-words text-[16px] sm:text-[17px] leading-[1.7] text-inkSoft",
+              "[&_p]:mt-0 [&_p+p]:mt-3",
+              "[&_strong]:font-semibold [&_strong]:text-aubergine",
+              "[&_em]:italic",
+              "[&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-3 [&_ol]:space-y-1.5",
+              "[&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-3 [&_ul]:space-y-1.5",
+              "[&_li]:pl-1",
+              "[&_li_p]:my-0",
+              "[&_h1]:display [&_h1]:text-[20px] [&_h1]:text-ink [&_h1]:mt-4 [&_h1]:mb-2",
+              "[&_h2]:display [&_h2]:text-[18px] [&_h2]:text-ink [&_h2]:mt-4 [&_h2]:mb-2",
+              "[&_h3]:eyebrow [&_h3]:text-margin [&_h3]:mt-4 [&_h3]:mb-2",
+              "[&_blockquote]:border-l-2 [&_blockquote]:border-aubergine/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-ink/80",
+              "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:bg-ink/[0.04] [&_code]:px-1 [&_code]:py-[1px] [&_code]:rounded",
+              "[&_a]:text-aubergine [&_a]:underline [&_a]:underline-offset-2",
+              "[&_hr]:my-5 [&_hr]:border-ink/10",
+            ].join(" ")}
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          </div>
         )}
       </div>
     </motion.div>
