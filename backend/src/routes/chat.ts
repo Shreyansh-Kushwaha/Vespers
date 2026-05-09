@@ -1,10 +1,14 @@
 import type { Context } from "hono";
 import { stream } from "hono/streaming";
 import { AzureOpenAI } from "openai";
-import { VESPERS_SYSTEM_PROMPT } from "../lib/prompt.js";
+import {
+  buildCrisisDirective,
+  buildMemoryContext,
+  buildOpeningDirective,
+  composeSystemPrompt,
+} from "../lib/prompt.js";
 import {
   appendMessages,
-  buildContextHint,
   createSession,
   getSession,
   type Message,
@@ -14,6 +18,8 @@ import {
   isRecoveryCode,
   normalizeCode,
 } from "../lib/recovery-code.js";
+import { classifyRisk } from "../lib/risk.js";
+import { summariseAndCompact, shouldSummarise } from "../lib/memory-summary.js";
 
 interface ChatBody {
   message?: string;
@@ -57,19 +63,25 @@ export async function chatHandler(c: Context) {
     }
   }
 
-  const session = (await getSession(code))!;
-  const contextHint = buildContextHint(session);
+  const session = await getSession(code);
+  if (!session) {
+    return c.text(
+      "Could not load session. If you just configured Supabase, run backend/supabase/migrations/*.sql in the SQL Editor.",
+      503,
+    );
+  }
 
-  const client = new AzureOpenAI({
-    apiKey,
-    endpoint,
-    deployment,
-    apiVersion,
+  // Risk classification on the *current* user message — heuristic, in-process,
+  // never persisted, never logged externally.
+  const risk = classifyRisk(userText);
+
+  const systemContent = composeSystemPrompt({
+    memoryContext: buildMemoryContext(session.memory),
+    openingDirective: buildOpeningDirective(session, Date.now()),
+    crisisDirective: buildCrisisDirective(risk),
   });
 
-  const systemContent = contextHint
-    ? `${VESPERS_SYSTEM_PROMPT}\n\n${contextHint}`
-    : VESPERS_SYSTEM_PROMPT;
+  const client = new AzureOpenAI({ apiKey, endpoint, deployment, apiVersion });
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: systemContent },
@@ -85,6 +97,10 @@ export async function chatHandler(c: Context) {
   c.header("X-Accel-Buffering", "no");
   c.header("X-Vespers-Code", code);
   c.header("X-Vespers-New-Session", isNewSession ? "1" : "0");
+  // Risk header is purely advisory for the UI banner. Never includes raw text.
+  c.header("X-Vespers-Risk-Level", risk.level);
+  if (risk.category) c.header("X-Vespers-Risk-Category", risk.category);
+  c.header("X-Vespers-Show-Support", risk.showSupportBanner ? "1" : "0");
 
   return stream(c, async (s) => {
     let full = "";
@@ -115,7 +131,15 @@ export async function chatHandler(c: Context) {
         { role: "user", content: userText, ts: now },
         { role: "model", content: full, ts: now + 1 },
       ];
-      await appendMessages(code!, turn);
+      const updated = await appendMessages(code!, turn);
+
+      // Fire-and-forget: fold older history into structured memory if needed.
+      // Runs after the stream closes so it never blocks the user.
+      if (updated && shouldSummarise(updated)) {
+        summariseAndCompact(updated).catch((e) => {
+          console.warn("[chat] summarise failed:", e?.message ?? e);
+        });
+      }
     }
   });
 }

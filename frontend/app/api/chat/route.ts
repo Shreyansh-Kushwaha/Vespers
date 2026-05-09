@@ -5,6 +5,14 @@ export const dynamic = "force-dynamic";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8787";
 
+const FORWARD_HEADERS = [
+  "X-Vespers-Code",
+  "X-Vespers-New-Session",
+  "X-Vespers-Risk-Level",
+  "X-Vespers-Risk-Category",
+  "X-Vespers-Show-Support",
+];
+
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const upstream = await fetch(`${BACKEND_URL}/api/chat`, {
@@ -14,12 +22,15 @@ export async function POST(req: NextRequest) {
   });
 
   const headers = new Headers();
-  headers.set("Content-Type", upstream.headers.get("Content-Type") || "text/plain; charset=utf-8");
+  headers.set(
+    "Content-Type",
+    upstream.headers.get("Content-Type") || "text/plain; charset=utf-8",
+  );
   headers.set("Cache-Control", "no-cache, no-transform");
-  const code = upstream.headers.get("X-Vespers-Code");
-  if (code) headers.set("X-Vespers-Code", code);
-  const isNew = upstream.headers.get("X-Vespers-New-Session");
-  if (isNew) headers.set("X-Vespers-New-Session", isNew);
+  for (const h of FORWARD_HEADERS) {
+    const v = upstream.headers.get(h);
+    if (v) headers.set(h, v);
+  }
 
   return new Response(upstream.body, { status: upstream.status, headers });
 }

@@ -1,5 +1,4 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
+import { getSupabase, SESSIONS_TABLE } from "./supabase.js";
 
 export type Role = "user" | "model";
 
@@ -10,103 +9,169 @@ export interface Message {
 }
 
 export interface SessionMemory {
+  // Structured emotional context — preserved across summarisation cycles.
+  emotionalThemes: string[];
+  recurringConcerns: string[];
+  copingStrategies: string[];
+  personalWins: string[];
+  unresolvedTopics: string[];
+  relationshipPatterns: string[];
+  summary: string;
+}
+
+export const EMPTY_MEMORY: SessionMemory = {
+  emotionalThemes: [],
+  recurringConcerns: [],
+  copingStrategies: [],
+  personalWins: [],
+  unresolvedTopics: [],
+  relationshipPatterns: [],
+  summary: "",
+};
+
+export interface ClosingRitual {
+  ts: number;
+  carrying: string;
+  releasing: string;
+  intention: string;
+}
+
+export interface Session {
   code: string;
   createdAt: number;
   updatedAt: number;
   messages: Message[];
-  summary: string;
-  themes: string[];
+  memory: SessionMemory;
+  closingRituals: ClosingRitual[];
 }
 
-interface Store {
-  sessions: Record<string, SessionMemory>;
+interface Row {
+  code: string;
+  created_at: number;
+  updated_at: number;
+  messages: Message[] | null;
+  memory: Partial<SessionMemory> | null;
+  closing_rituals: ClosingRitual[] | null;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const STORE_PATH = path.join(DATA_DIR, "sessions.json");
+function rowToSession(r: Row): Session {
+  return {
+    code: r.code,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+    messages: r.messages ?? [],
+    memory: { ...EMPTY_MEMORY, ...(r.memory ?? {}) },
+    closingRituals: r.closing_rituals ?? [],
+  };
+}
 
-async function ensureStore(): Promise<Store> {
-  try {
-    const raw = await fs.readFile(STORE_PATH, "utf8");
-    return JSON.parse(raw) as Store;
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    const empty: Store = { sessions: {} };
-    await fs.writeFile(STORE_PATH, JSON.stringify(empty, null, 2));
-    return empty;
+const COLUMNS = "code, created_at, updated_at, messages, memory, closing_rituals";
+
+export async function getSession(code: string): Promise<Session | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from(SESSIONS_TABLE)
+    .select(COLUMNS)
+    .eq("code", code)
+    .maybeSingle();
+  if (error) {
+    console.warn("[memory] getSession error:", error.message);
+    return null;
   }
+  return data ? rowToSession(data as Row) : null;
 }
 
-async function writeStore(store: Store): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2));
-}
-
-export async function getSession(code: string): Promise<SessionMemory | null> {
-  const store = await ensureStore();
-  return store.sessions[code] ?? null;
-}
-
-export async function deleteSession(code: string): Promise<boolean> {
-  const store = await ensureStore();
-  if (!store.sessions[code]) return false;
-  delete store.sessions[code];
-  await writeStore(store);
-  return true;
-}
-
-export async function createSession(code: string): Promise<SessionMemory> {
-  const store = await ensureStore();
+export async function createSession(code: string): Promise<Session> {
   const now = Date.now();
-  const session: SessionMemory = {
+  const sb = getSupabase();
+  const { error } = await sb.from(SESSIONS_TABLE).insert({
+    code,
+    created_at: now,
+    updated_at: now,
+    messages: [],
+    memory: EMPTY_MEMORY,
+    closing_rituals: [],
+  });
+  if (error) {
+    console.warn("[memory] createSession error:", error.message);
+  }
+  return {
     code,
     createdAt: now,
     updatedAt: now,
     messages: [],
-    summary: "",
-    themes: [],
+    memory: EMPTY_MEMORY,
+    closingRituals: [],
   };
-  store.sessions[code] = session;
-  await writeStore(store);
-  return session;
 }
 
-export async function appendMessages(code: string, msgs: Message[]): Promise<SessionMemory | null> {
-  const store = await ensureStore();
-  const session = store.sessions[code];
-  if (!session) return null;
-  session.messages.push(...msgs);
-  // Keep last 60 turns in raw history; older ones live in summary.
-  if (session.messages.length > 60) {
-    session.messages = session.messages.slice(-60);
+export async function deleteSession(code: string): Promise<boolean> {
+  const sb = getSupabase();
+  const { error, count } = await sb
+    .from(SESSIONS_TABLE)
+    .delete({ count: "exact" })
+    .eq("code", code);
+  if (error) {
+    console.warn("[memory] deleteSession error:", error.message);
+    return false;
   }
-  session.updatedAt = Date.now();
-  store.sessions[code] = session;
-  await writeStore(store);
-  return session;
+  return (count ?? 0) > 0;
 }
 
-export async function updateSummary(
+export async function appendMessages(
   code: string,
-  summary: string,
-  themes: string[],
-): Promise<void> {
-  const store = await ensureStore();
-  const session = store.sessions[code];
-  if (!session) return;
-  session.summary = summary.slice(0, 1200);
-  session.themes = themes.slice(0, 12);
-  session.updatedAt = Date.now();
-  await writeStore(store);
+  msgs: Message[],
+): Promise<Session | null> {
+  const existing = await getSession(code);
+  if (!existing) return null;
+  const merged = [...existing.messages, ...msgs];
+  const updatedAt = Date.now();
+  const sb = getSupabase();
+  const { error } = await sb
+    .from(SESSIONS_TABLE)
+    .update({ messages: merged, updated_at: updatedAt })
+    .eq("code", code);
+  if (error) {
+    console.warn("[memory] appendMessages error:", error.message);
+    return null;
+  }
+  return { ...existing, messages: merged, updatedAt };
 }
 
-export function buildContextHint(session: SessionMemory): string {
-  const parts: string[] = [];
-  if (session.summary) {
-    parts.push(`Quiet memory of past sessions: ${session.summary}`);
+/**
+ * Replace messages + structured memory atomically. Used by the summariser
+ * after it folds older turns into structured memory.
+ */
+export async function replaceMemoryAndMessages(
+  code: string,
+  memory: SessionMemory,
+  messages: Message[],
+): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb
+    .from(SESSIONS_TABLE)
+    .update({ memory, messages, updated_at: Date.now() })
+    .eq("code", code);
+  if (error) {
+    console.warn("[memory] replaceMemoryAndMessages error:", error.message);
   }
-  if (session.themes.length) {
-    parts.push(`Recurring themes: ${session.themes.join(", ")}.`);
+}
+
+export async function appendClosingRitual(
+  code: string,
+  ritual: ClosingRitual,
+): Promise<boolean> {
+  const session = await getSession(code);
+  if (!session) return false;
+  const merged = [...session.closingRituals, ritual];
+  const sb = getSupabase();
+  const { error } = await sb
+    .from(SESSIONS_TABLE)
+    .update({ closing_rituals: merged, updated_at: Date.now() })
+    .eq("code", code);
+  if (error) {
+    console.warn("[memory] appendClosingRitual error:", error.message);
+    return false;
   }
-  return parts.join("\n");
+  return true;
 }

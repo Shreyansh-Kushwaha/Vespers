@@ -1,12 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChatInput } from "@/components/ChatInput";
 import { MessageBubble, type ChatRole } from "@/components/MessageBubble";
 import { RecoveryCodePill } from "@/components/RecoveryCodePill";
+import { CrisisSupport } from "@/components/CrisisSupport";
+import { ClosingRitual } from "@/components/ClosingRitual";
 import { PaperSurface } from "@/components/marketing/PaperSurface";
 import { apiUrl } from "@/lib/api";
+import { useInactivity } from "@/lib/inactivity";
+import { readRiskFromHeaders, type RiskAssessment } from "@/lib/risk";
 
 interface ChatMsg {
   id: string;
@@ -16,6 +21,9 @@ interface ChatMsg {
 }
 
 const CODE_KEY = "vespers.code";
+const CLOSING_SHOWN_KEY = "vespers.closing.lastShownTs";
+const CLOSING_COOLDOWN_MS = 1000 * 60 * 60 * 6; // 6h between auto-prompts
+const INACTIVITY_MS = 1000 * 60 * 10; // 10 min
 
 const PROMPTS = [
   "i've been feeling stretched thin lately.",
@@ -34,11 +42,15 @@ export default function Page() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [risk, setRisk] = useState<RiskAssessment | null>(null);
+  const [closingOpen, setClosingOpen] = useState(false);
+
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const isProgrammaticScrollRef = useRef(false);
 
+  // Hydrate from saved recovery code.
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem(CODE_KEY) : null;
     if (saved) {
@@ -64,7 +76,7 @@ export default function Page() {
     }
   }, []);
 
-  // Track whether the user is parked near the bottom. Ignore programmatic scrolls.
+  // Sticky-to-bottom scroll detection.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -80,9 +92,7 @@ export default function Page() {
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Pin to bottom synchronously whenever the inner content's height changes
-  // (every streamed chunk grows the assistant message). Using ResizeObserver +
-  // useLayoutEffect avoids the lag of a post-paint useEffect.
+  // Pin to bottom on every content resize (streaming chunks).
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
     const content = contentRef.current;
@@ -97,6 +107,45 @@ export default function Page() {
     ro.observe(content);
     return () => ro.disconnect();
   }, []);
+
+  // Closing-ritual after 10 minutes of inactivity, when there's a real
+  // conversation in flight and we haven't recently shown one.
+  const closingEligible =
+    hydrated &&
+    !streaming &&
+    !closingOpen &&
+    messages.length >= 4; // at least one full back-and-forth
+
+  const tryShowClosing = useCallback(() => {
+    if (!closingEligible) return;
+    let lastShown = 0;
+    try {
+      lastShown = Number(localStorage.getItem(CLOSING_SHOWN_KEY)) || 0;
+    } catch {
+      /* ignore */
+    }
+    if (Date.now() - lastShown < CLOSING_COOLDOWN_MS) return;
+    setClosingOpen(true);
+    try {
+      localStorage.setItem(CLOSING_SHOWN_KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+  }, [closingEligible]);
+
+  const { bump } = useInactivity(closingEligible, INACTIVITY_MS, tryShowClosing);
+
+  const onClosingSubmit = useCallback(
+    async (entries: { carrying: string; releasing: string; intention: string }) => {
+      if (!code) return;
+      await fetch(apiUrl("/api/rituals/closing"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, ...entries }),
+      }).catch(() => {});
+    },
+    [code],
+  );
 
   const send = useCallback(
     async (text: string) => {
@@ -114,6 +163,7 @@ export default function Page() {
       setMessages((m) => [...m, userMsg, assistantMsg]);
       setInput("");
       setStreaming(true);
+      bump();
 
       try {
         const res = await fetch(apiUrl("/api/chat"), {
@@ -130,6 +180,12 @@ export default function Page() {
           } catch {
             /* storage unavailable */
           }
+        }
+
+        // Risk assessment travels in headers — never in the streamed body.
+        const incoming = readRiskFromHeaders(res.headers);
+        if (incoming.showSupportBanner) {
+          setRisk(incoming);
         }
 
         if (!res.ok || !res.body) {
@@ -171,9 +227,10 @@ export default function Page() {
         );
       } finally {
         setStreaming(false);
+        bump();
       }
     },
-    [code, streaming],
+    [bump, code, streaming],
   );
 
   const handleUseCode = useCallback(async (newCode: string) => {
@@ -204,20 +261,39 @@ export default function Page() {
     }
   }, []);
 
+  const handleStartNew = useCallback(() => {
+    // Non-destructive: just walk away from this code on this device. The
+    // session row stays on the server; the user can paste the old code back
+    // any time to return to it.
+    setCode(null);
+    setMessages([]);
+    setRisk(null);
+    setInput("");
+    try {
+      localStorage.removeItem(CODE_KEY);
+      localStorage.removeItem(CLOSING_SHOWN_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const handleForget = useCallback(async () => {
     const confirmed =
       typeof window === "undefined"
         ? true
         : window.confirm(
-            "Forget this session?\n\nThis permanently deletes your stored chat history on the server and clears your recovery code from this device. It can't be undone.",
+            "Forget this session permanently?\n\nThis deletes the stored chat history from the server and clears the recovery code from this device. It cannot be undone.",
           );
     if (!confirmed) return;
 
     const codeToDelete = code;
     setCode(null);
     setMessages([]);
+    setRisk(null);
+    setInput("");
     try {
       localStorage.removeItem(CODE_KEY);
+      localStorage.removeItem(CLOSING_SHOWN_KEY);
     } catch {
       /* ignore */
     }
@@ -227,7 +303,7 @@ export default function Page() {
           method: "DELETE",
         });
       } catch {
-        /* best-effort; the client side is already cleared */
+        /* best-effort */
       }
     }
   }, [code]);
@@ -238,7 +314,6 @@ export default function Page() {
     <main className="relative h-dvh overflow-hidden flex flex-col bg-paper text-ink">
       <PaperSurface />
 
-      {/* Header — wordmark + recovery code */}
       <header className="sticky top-0 z-20 bg-paper/95 hairline-b">
         <div className="mx-auto max-w-[1240px] w-full px-6 sm:px-10 lg:px-16 py-5 sm:py-6 flex items-center justify-between gap-6">
           <div className="flex items-baseline gap-5 sm:gap-7 min-w-0">
@@ -252,19 +327,25 @@ export default function Page() {
             <span className="eyebrow hidden sm:inline">
               vol. ii &nbsp;·&nbsp; session
             </span>
+            <Link
+              href="/letters"
+              className="eyebrow hidden md:inline text-margin hover:text-aubergine transition-colors"
+            >
+              letters
+            </Link>
           </div>
           <RecoveryCodePill
             code={code}
             onUseCode={handleUseCode}
+            onStartNew={handleStartNew}
             onForget={handleForget}
           />
         </div>
       </header>
 
-      {/* Transcript scroller */}
       <div
         ref={scrollerRef}
-        className="flex-1 overflow-y-auto px-6 sm:px-10 lg:px-16 pb-44"
+        className="flex-1 overflow-y-auto px-6 sm:px-10 lg:px-16 pb-52"
       >
         <div ref={contentRef} className="mx-auto w-full max-w-[820px] pt-12 sm:pt-20">
           <AnimatePresence>
@@ -314,6 +395,16 @@ export default function Page() {
                     ))}
                   </ol>
                 </div>
+
+                <div className="mt-14 hairline pt-5 flex items-baseline justify-between">
+                  <div className="eyebrow">or</div>
+                  <Link
+                    href="/letters/new"
+                    className="display italic text-[16px] text-aubergine hover:text-violetInk transition-colors"
+                  >
+                    write to yourself →
+                  </Link>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -333,24 +424,36 @@ export default function Page() {
         </div>
       </div>
 
-      {/* Fixed input bar */}
       <div className="fixed bottom-0 left-0 right-0 z-20 pointer-events-none">
-        <div className="h-16 bg-gradient-to-t from-paper to-transparent" />
+        <div className="h-12 bg-gradient-to-t from-paper to-transparent" />
         <div className="bg-paper hairline-t pointer-events-auto">
-          <div className="mx-auto w-full max-w-[820px] px-6 sm:px-10 lg:px-16 py-5 sm:py-6">
+          <div className="mx-auto w-full max-w-[820px] px-6 sm:px-10 lg:px-16 py-5 sm:py-6 space-y-4">
+            <CrisisSupport
+              risk={risk}
+              onDismiss={() => setRisk(null)}
+            />
             <ChatInput
               value={input}
-              onChange={setInput}
+              onChange={(v) => {
+                setInput(v);
+                bump();
+              }}
               onSubmit={() => send(input)}
               disabled={streaming}
             />
-            <div className="mt-3 eyebrow text-margin/80 text-center">
+            <div className="eyebrow text-margin/80 text-center">
               vespers is a wellness companion · not a substitute for medical or
               emergency care
             </div>
           </div>
         </div>
       </div>
+
+      <ClosingRitual
+        open={closingOpen}
+        onDismiss={() => setClosingOpen(false)}
+        onSubmit={onClosingSubmit}
+      />
     </main>
   );
 }

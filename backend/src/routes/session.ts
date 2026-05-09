@@ -15,8 +15,8 @@ export async function sessionHandler(c: Context) {
     ok: true,
     code: session.code,
     messages: session.messages,
-    summary: session.summary,
-    themes: session.themes,
+    memory: session.memory,
+    closingRituals: session.closingRituals,
   });
 }
 

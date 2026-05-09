@@ -49,3 +49,6 @@ data/sessions.json
 # Coverage & misc
 coverage/
 .turbo/
+
+# Local project notes (never commit)
+project.md
