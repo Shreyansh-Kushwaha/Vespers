@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    height: 100%;
+  }
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    background: #07080d;
+    color: #e9ecf3;
+  }
+  /* Light surface for the marketing landing — opt-in via the .paper-surface class */
+  body.paper-surface {
+    color-scheme: light;
+    background: #F6F2EA;
+    color: #161412;
+  }
+  ::selection {
+    background: rgba(154, 140, 255, 0.35);
+    color: #fff;
+  }
+  body.paper-surface ::selection {
+    background: rgba(74, 42, 79, 0.18);
+    color: #161412;
+  }
+}
+
+@layer components {
+  /* ── Dark / app glass system ─────────────────────────────────────── */
+  .glass {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.045),
+      rgba(255, 255, 255, 0.02)
+    );
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(22px) saturate(140%);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+  }
+  .glass-strong {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.07),
+      rgba(255, 255, 255, 0.025)
+    );
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+  }
+  .soft-shadow {
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 20px 60px -20px rgba(0, 0, 0, 0.55);
+  }
+  /* ── Light / paper marketing system ──────────────────────────────── */
+  .eyebrow {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #6F665B;
+  }
+  .hairline { border-top: 1px solid rgba(22, 20, 18, 0.12); }
+  .hairline-b { border-bottom: 1px solid rgba(22, 20, 18, 0.12); }
+  .hairline-t { border-top: 1px solid rgba(22, 20, 18, 0.12); }
+  .ink-link {
+    position: relative;
+    color: #161412;
+    transition: color 200ms ease;
+  }
+  .ink-link::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -3px;
+    height: 1px;
+    background: #161412;
+    transform-origin: right center;
+    transform: scaleX(1);
+    transition: transform 350ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .ink-link:hover::after {
+    transform-origin: left center;
+    transform: scaleX(1);
+  }
+  .script {
+    font-family: var(--font-allura), cursive;
+    font-weight: 400;
+    line-height: 0.9;
+  }
+  .display {
+    font-family: var(--font-fraunces), Georgia, serif;
+    font-feature-settings: "ss01", "cv11";
+  }
+  .ink-bleed-underline {
+    background-image: linear-gradient(90deg, #4A2A4F, #322A6E);
+    background-size: 100% 1px;
+    background-repeat: no-repeat;
+    background-position: 0 calc(100% - 2px);
+  }
+}
+
+/* ── Custom scrollbar — paper / ink / aubergine ─────────────────────── */
+
+/* Firefox */
+html {
+  scrollbar-color: rgba(22, 20, 18, 0.25) transparent;
+  scrollbar-width: thin;
+}
+
+/* WebKit / Chromium */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(22, 20, 18, 0.22);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+  transition: background-color 220ms ease;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(74, 42, 79, 0.7);   /* aubergine */
+}
+*::-webkit-scrollbar-thumb:active {
+  background-color: rgba(50, 42, 110, 0.85); /* violet ink */
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Typing dots (chat) */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #cfd6e4;
+  opacity: 0.55;
+  animation: typing 1.2s infinite ease-in-out;
+}
+.dot:nth-child(2) { animation-delay: 0.15s; }
+.dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+  40% { transform: translateY(-3px); opacity: 1; }
+}
+
+/* Paper-themed typing dots (chat on light surface) */
+.dot-paper {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #4A2A4F;
+  opacity: 0.45;
+  animation: typing 1.2s infinite ease-in-out;
+}
+.dot-paper:nth-child(2) { animation-delay: 0.15s; }
+.dot-paper:nth-child(3) { animation-delay: 0.3s; }
+
+/* Calligraphic wordmark draw-in */
+@keyframes wordmarkWipe {
+  0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { clip-path: inset(0 0% 0 0);   opacity: 1; }
+}
+.wordmark-wipe {
+  animation: wordmarkWipe 1600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.caret {
+  display: inline-block;
+  width: 8px;
+  height: 1.05em;
+  vertical-align: -0.18em;
+  margin-left: 2px;
+  background: #161412;
+  animation: caretBlink 900ms steps(2, end) infinite;
+}
+@keyframes caretBlink {
+  0%, 60% { opacity: 1; }
+  61%, 100% { opacity: 0; }
+}
+
+/* Reduced-motion reset */
+@media (prefers-reduced-motion: reduce) {
+  .wordmark-wipe { animation: none; clip-path: none; opacity: 1; }
+  .caret { animation: none; }
+}
