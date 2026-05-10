@@ -33,8 +33,19 @@ export function MovementClose() {
                 </p>
               </div>
               <div className="col-span-12 sm:col-span-6 sm:text-right">
-                <span className="eyebrow">no account, no inbox, no audience.</span>
+                <a
+                  href="/play"
+                  className="ink-link display text-[clamp(16px,1.4vw,20px)] tracking-tight italic text-inkSoft block"
+                >
+                  or wander the pond →
+                </a>
+                <p className="mt-3 text-margin text-[12.5px] leading-relaxed max-w-sm sm:ml-auto">
+                  three quiet objects, when the words are too much.
+                </p>
               </div>
+            </div>
+            <div className="mt-10 hairline pt-4">
+              <span className="eyebrow">no account, no inbox, no audience.</span>
             </div>
           </Reveal>
         </div>

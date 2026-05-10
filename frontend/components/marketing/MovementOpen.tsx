@@ -10,9 +10,15 @@ export function MovementOpen() {
       {/* tiny mast */}
       <header className="mx-auto max-w-[1240px] w-full px-6 sm:px-10 lg:px-16 pt-8 sm:pt-10 flex items-center justify-between">
         <span className="eyebrow">Vespers — est. for difficult evenings</span>
-        <a href="/app" className="eyebrow ink-link no-underline">
-          enter →
-        </a>
+        <nav className="flex items-center gap-5 sm:gap-6">
+          <a href="/play" className="eyebrow ink-link no-underline">
+            the play room
+          </a>
+          <span className="eyebrow text-margin/40">·</span>
+          <a href="/app" className="eyebrow ink-link no-underline">
+            enter →
+          </a>
+        </nav>
       </header>
 
       {/* wordmark, set asymmetrically rather than dead-center */}

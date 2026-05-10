@@ -52,9 +52,15 @@ export function Footnote() {
         <div className="mt-14 hairline pt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <span className="eyebrow">© vespers · vol. i</span>
           <span className="eyebrow">set in fraunces · allura · inter</span>
-          <a href="/app" className="eyebrow ink-link">
-            enter the quiet place →
-          </a>
+          <div className="flex items-center gap-5">
+            <a href="/play" className="eyebrow ink-link">
+              the play room →
+            </a>
+            <span className="eyebrow text-margin/40">·</span>
+            <a href="/app" className="eyebrow ink-link">
+              enter the quiet place →
+            </a>
+          </div>
         </div>
       </div>
     </footer>

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Fraunces, Allura, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { BackendStatus } from "@/components/BackendStatus";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -46,7 +47,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       className={`${inter.variable} ${fraunces.variable} ${allura.variable} ${mono.variable}`}
     >
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        {children}
+        <BackendStatus />
+      </body>
     </html>
   );
 }
