@@ -221,51 +221,9 @@ export function GappuAvatar({ mood, size = 72, className, peekTarget }: Props) {
           {/* neck stub — thin, defines a jaw transition */}
           <rect x="44" y="82" width="12" height="9" fill="#FFE3C7" stroke="#D88E73" strokeWidth="1" />
 
-          {/* Boy haircut — single solid shape. Smooth rounded crown on top,
-              JAGGED hairline of choppy short bangs along the bottom. The
-              cap line (where the smooth crown ends) sits at ~y=48, and the
-              individual bangs hang BELOW that to y≈52 — so even where two
-              bangs meet, the cap above is already solid. No interior cutout,
-              no overlay needed: this single fill geometrically can't leave
-              a bald patch. */}
-          <path
-            d="M 16 50
-               Q 8 24 26 12
-               Q 50 4 74 12
-               Q 92 24 84 50
-               L 80 48
-               L 76 52
-               L 72 47
-               L 68 51
-               L 64 46
-               L 60 50
-               L 56 46
-               L 52 53
-               L 48 46
-               L 44 50
-               L 40 46
-               L 36 51
-               L 32 46
-               L 28 50
-               L 24 47
-               L 20 50
-               L 16 50
-               Z"
-            fill="#2a1505"
-          />
-
-          {/* Ahoge — anime cowlick on the crown. */}
-          <path
-            d="M 46 11
-               L 50 1
-               L 54 11
-               Z"
-            fill="#2a1505"
-          />
-
-          {/* small ear nubs — visible just below the hairline */}
-          <ellipse cx="17" cy="58" rx="2.6" ry="3.4" fill="#F2C8AC" stroke="#D88E73" strokeWidth="1" />
-          <ellipse cx="83" cy="58" rx="2.6" ry="3.4" fill="#F2C8AC" stroke="#D88E73" strokeWidth="1" />
+          {/* ── face stack drawn FIRST so the hair can paint over the
+              forehead. Order: face → ear nubs → hair (cap + bangs) → ahoge
+              → sideburn flecks → highlight band. */}
 
           {/* face — slightly wider than tall for a squarer jaw */}
           <ellipse
@@ -278,13 +236,57 @@ export function GappuAvatar({ mood, size = 72, className, peekTarget }: Props) {
             strokeWidth="1.4"
           />
 
-          {/* short sideburn flecks (boyish, not flowing) */}
-          <path d="M20 50 L 22 60 L 26 56 Z" fill="#2a1505" />
-          <path d="M80 50 L 78 60 L 74 56 Z" fill="#2a1505" />
+          {/* small ear nubs — visible just below the hairline */}
+          <ellipse cx="17" cy="58" rx="2.6" ry="3.4" fill="#F2C8AC" stroke="#D88E73" strokeWidth="1" />
+          <ellipse cx="83" cy="58" rx="2.6" ry="3.4" fill="#F2C8AC" stroke="#D88E73" strokeWidth="1" />
+
+          {/* Boy haircut — single solid shape painted ON TOP of the face so
+              it actually covers the forehead. Smooth rounded crown on top,
+              jagged choppy-bang hairline along the bottom sitting just above
+              the eyebrow line. One fill, no interior cutout. */}
+          <path
+            d="M 14 48
+               Q 6 22 26 10
+               Q 50 2 74 10
+               Q 94 22 86 48
+               L 82 45
+               L 78 49
+               L 74 44
+               L 70 48
+               L 66 43
+               L 62 47
+               L 58 43
+               L 54 49
+               L 50 43
+               L 46 48
+               L 42 43
+               L 38 48
+               L 34 43
+               L 30 47
+               L 26 44
+               L 22 47
+               L 18 44
+               L 14 48
+               Z"
+            fill="#2a1505"
+          />
+
+          {/* Ahoge — anime cowlick on the crown. */}
+          <path
+            d="M 46 9
+               L 50 -1
+               L 54 9
+               Z"
+            fill="#2a1505"
+          />
+
+          {/* short sideburn flecks (boyish, not flowing) — hang down from the
+              bottom of the hair past the ears */}
+          <path d="M18 48 L 22 60 L 26 54 Z" fill="#2a1505" />
+          <path d="M82 48 L 78 60 L 74 54 Z" fill="#2a1505" />
 
           {/* Subtle highlight band — a thin lighter stripe near the crown so
-              the hair reads as having dimension. Stays inside the main shape;
-              nothing it does can affect the silhouette or expose face. */}
+              the hair reads as having dimension. Lives inside the main shape. */}
           <path
             d="M 28 18
                Q 50 12 72 18
