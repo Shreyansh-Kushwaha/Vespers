@@ -29,7 +29,7 @@
 - **Streaming responses** powered by **Azure OpenAI (GPT-5.1)**.
 - **Persistent memory** in Supabase, with automatic background summarisation.
 - **Quiet objects** to escape to when words feel like too much — koi pond, watercolour, candle.
-- **Animated Gappu mascot** with cursor-tracking eyes and the occasional peek at your textbox.
+- **Animated, interactive Gappu mascot** — cursor-tracking eyes, occasional textbox peeks, stream-content reactions (surprise, wink, lightbulb, sweat, tear, filmi, chai), idle moods (look-around, sneak-peek, yawn, snore), hello-wave on first message, crisis bow when stepping aside, *plus* you can click him to beat him, drag him around, and let him fall.
 
 ---
 
@@ -72,30 +72,82 @@ Vespers can name well-known **psychological concepts** (not diagnoses) and sugge
 
 ### 4) Gappu — the Hinglish chatterbox
 
+Gappu is a **cousin, not a coach**. The prompt frames him as the guy who shows up to every family function uninvited — chai-stained kurta, knows everyone in the mohalla, watched every Govinda movie at least four times, quotes Sholay in unrelated contexts, currently "between jobs" since 2019.
+
 - ~70% Hindi words / 30% English in **Roman script only** (no Devanagari).
 - Short and punchy (1–4 lines for jokes, max 6 lines otherwise).
 - Roasts the situation, never the user. Always lovingly.
-- Fair-game references: Bollywood, cricket, IPL, chai, Indian moms, traffic, hostel life, monsoons, exam season.
-- **Hard guardrails** baked into the prompt: never jokes about self-harm/suicide, mental-illness diagnoses, religion, caste, gender slurs, body shaming, or politics.
+- Code-switches by feel: Hindi for emotion (*arre*, *yaar*, *bas kar bhai*, *kya scene hai*), English for things Hindi makes clunky (*deadline*, *boss*, *ex*, *reels*, *WiFi*).
+- Voice moves: roast the situation, Bollywood/cricket/Indian-mom references, made-up shayari (deliberately bad), "Bhai sun ek baat..." setups, filmy-scene comparisons.
+- Anti-AI tells — the prompt explicitly bans *"As an AI..."*, *"It sounds like..."*, *"That must be hard"*, *"Certainly!"*, em-dashes used like a podcast host, and any sentence longer than 5 lines.
+- **Hard guardrails** baked into the prompt: never jokes about self-harm/suicide, mental-illness diagnoses, religion, caste, gender slurs, body shaming, Indian politics, sexual abuse, or the user's family in a mean way.
+- **Crisis hand-off line** the model knows by heart: *"yaar ruk. ye serious lag raha hai aur main joker hoon — tujhe abhi Vespers chahiye. wo proper sun lega. main yahin hoon jab halka feel ho."*
 
-### 5) Gappu mascot (anime avatar with personality)
+### 5) Gappu mascot — anime avatar with full animation pack
 
-A small SVG mascot appears above the input bar whenever Gappu is the active persona.
+A small SVG mascot appears above the input bar whenever Gappu is the active persona. The body is one inline SVG (no PNGs, no canvases) with every feature morphing by state.
 
-**Mood states**, all driven by the chat lifecycle:
+**Visual identity** — short anime-boy haircut: solid rounded crown drawn on top of the face so the forehead is properly covered, jagged choppy bangs along the hairline, thick always-visible boy brows that re-shape per state, small ear nubs at the temples, triangular sideburn flecks, and an **ahoge cowlick** poking up from the crown that wiggles on every mood change and quivers continuously while laughing.
+
+#### Core moods (driven by the chat lifecycle)
 - `idle` — neutral peek, gentle smile, blinks every 2.5–5s
-- `thinking` — eyes glance up, brows tilt, flat mouth, three dots pulse overhead (just after user sends)
+- `thinking` — eyes glance up, brows tilt worried, flat mouth, three dots pulse overhead (just after user sends)
 - `talking` — mouth flaps open/closed at ~5Hz while a stream is in flight
-- `laughing` — closed `^_^` arcs, wide mouth, cheek blush, temple sparkles (triggered briefly when stream content contains laughter — `haha`, `lol`, `lmao`, `😂`, `🤣`, etc.)
+- `laughing` — closed `^_^` arcs, wide mouth, cheek blush, temple sparkles, ahoge quivers (triggered briefly when stream content contains laughter — `haha`, `lol`, `lmao`, `rofl`, `😂`, `🤣`, `😆`, `😅`, `😹`)
 - `smiling` — wider grin + soft blush (settled mood after a laughy reply)
 
-**Cursor & input interaction**:
-- **Eye tracking** — pupils follow your mouse, lerped (~18%/frame, ~30fps cap, no rerender when the mouse is still).
-- **Periodic textbox peek** — while the input is focused, every 3.5–6.5s Gappu briefly glances at your textbox: head tilts ~6°, raised curious brows, mouth becomes a small "o", cheeks blush. Done in ~700–1000ms.
+#### Stream-content reactions (one-shot overlays)
+Regex detection runs on the streaming accumulator; each reaction fires at most once per response. All trigger fresh on the next reply.
 
-**Visual identity** — spiky boy haircut with multiple peaks, small ear nubs, short triangular sideburn flecks, thick always-visible boy brows that re-shape per mood (straight base / pulled-up worried for thinking / curious raised for peek), rounder less-anime-tall eyes.
+| Reaction | Trigger patterns | Visual |
+| --- | --- | --- |
+| **Surprise** | `arre`, `abey`, `whaaat`, `seriously`, `wait what`, `hai na`, `kya bol` | Wide round eyes + small O mouth + raised arched brows + sparkle ring around the head |
+| **Wink** | `wink`, `;)`, `;]`, `*wink*` | Right eye becomes a curve, mouth slants into a smirk |
+| **Lightbulb** | `try ye`, `try this`, `sun ek`, `idea`, `kar le` | 💡 floats up above the head with 5 rays, fades after ~1.5s |
+| **Sweat drop** | `pata nahi`, `main bhi`, `same yaar`, `kya pata`, `mujhe bhi` | Blue bead slides down the right temple and dissipates |
+| **Tear sparkle** | `strong`, `main yahin`, `tu kar lega`, `hum saath`, `aaja gale` | Light-blue teardrop at the corner of the eye + a sparkle pop, doesn't fall (Indian-dad style) |
+| **Filmi pose** | `srk`, `filmy`, `picture`, `movie`, `sholay`, `bollywood`, `govinda`, `amitabh`, `dialogue` | Head tilts 8°, one brow raises, smirk mouth, gold sparkle to the right of the head |
+| **Chai sip** | `chai`, `cutting`, `garam`, `kadak` | Tiny cup drifts up to the mouth, tilts back for a sip, two wisps of steam rise; fades out |
 
-**Optimisation** — single inline SVG. One global mousemove listener writes to a ref (zero rerenders). One rAF loop, throttled to ~30fps, skips state updates when the new pupil offset is within 0.18 SVG units of the current one. All timers cleaned up when persona switches back to Vespers.
+`detectReactions(text: string)` is exported so the chat page can scan the live stream.
+
+#### Idle sub-moods
+Reset whenever the mood changes; accumulate only while mood is `idle` or `smiling`.
+
+- **Look-around** — every 8–12s of pure idle, eyes flick left or right (forced gaze override for ~750ms) then return to cursor tracking.
+- **Sneak peek** — every 14–28s, head rotates ~14° as if checking behind him for ~900ms.
+- **Yawn** — after 45s of stillness: squeezed-shut `>v<` eyes, tall vertical mouth, holds ~2s.
+- **Snore** — after 3 min: flat closed eyes, small open mouth, animated *zZz* text floats up from the head. Continues until any input.
+
+#### Cursor & input interaction
+- **Eye tracking** — pupils follow your mouse with a lerped catch-up (~18%/frame, 30fps cap). Saturates at 120px from the face. State updates skipped when offset change is below 0.18 SVG units — a still mouse causes zero re-renders.
+- **Periodic textbox peek** — while the chat input is focused, every 3.5–6.5s Gappu briefly glances at your textbox: head tilts ~6°, raised curious brows, mouth becomes a small "o", cheeks blush. Lasts 700–1000ms.
+- **Hover lift** — when the cursor is over the avatar, the eyebrows lift 2px and the whole mascot scales up subtly.
+
+#### Lifecycle moments
+- **Hello wave** — on the first message of a fresh Gappu thread, a small SVG hand peeks out by the right ear and waves through three oscillations (~2.4s).
+- **Crisis-override bow** — when the backend flips effective persona to Vespers for a turn, the mascot **bows** (head tilts down ~6°) and drops to **45% opacity** for that turn, returning to normal on the next turn.
+- **Error face** — if the stream throws, eyes become `>_<` and the mouth becomes a `~` wave for 1.4s.
+
+#### Click / drag / fall — interactive
+- **Click (tap) on Gappu → beat** — eyes become **X_X**, mouth becomes a tiny flat line, body shakes (`[-3, 3, -2, 2, 0]` x with mirrored rotation), and **three colored stars orbit overhead** for ~900ms. He recovers.
+- **Drag** — press and move and Gappu follows your cursor anywhere on the screen. Implemented with manual pointer events (`setPointerCapture` for reliable tracking even when the cursor leaves the wrapper), so drag works on mouse, pen, and touch.
+- **Fall** — when you release after a drag, Gappu **falls from the exact release point** (not the origin). Animation runs through `y: [from, from+70, from+60, from+78]` and `rotate: [0°, 180°, 210°, 240°]` over 1.6s for a tumble + small bounce, while the X_X eyes and orbiting stars stay on. After 2.4s total he springs back up to his perch above the input.
+
+The click-vs-drag distinction is automatic: a press without 5+px of movement is treated as a click; anything else is a drag.
+
+#### Ambient (always on)
+- Slow head sway (~7s loop, ±1.2° rotation).
+- Breathing scale (~4s loop, 1.0 ↔ 1.015).
+- Ahoge cowlick spring-wiggles on every mood change.
+
+#### Performance protections (low-end PC friendly)
+- One inline SVG — no PNGs, no second canvas.
+- One global `mousemove` listener writing to a `useRef` (zero React re-renders on mouse movement).
+- One rAF loop for pupil gaze, capped at ~30fps (33ms throttle), skips `setState` when the new offset is within 0.18 SVG units of the current one.
+- Blink, mouth-flap, peek, look-around, sneak-peek, yawn/snore checks, and reaction TTLs are all separate timers that mount only while their state is active and tear down on transition.
+- Drag uses `touchAction: none` so it never thrashes scroll handling on touch devices.
+- Everything cleans up cleanly when persona switches back to Vespers and the component unmounts.
 
 ### 6) Koi pond (`/play/koi`)
 
