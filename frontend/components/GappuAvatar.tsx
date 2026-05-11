@@ -221,24 +221,40 @@ export function GappuAvatar({ mood, size = 72, className, peekTarget }: Props) {
           {/* neck stub — thin, defines a jaw transition */}
           <rect x="44" y="82" width="12" height="9" fill="#FFE3C7" stroke="#D88E73" strokeWidth="1" />
 
-          {/* Main hair — rounded anime mushroom cap. One smooth solid shape
-              from temple to temple with a gentle widow's-peak hairline at
-              the forehead. No spikes, no gaps — covers the head completely. */}
+          {/* Boy haircut — single solid shape. Smooth rounded crown on top,
+              JAGGED hairline of choppy short bangs along the bottom. The
+              cap line (where the smooth crown ends) sits at ~y=48, and the
+              individual bangs hang BELOW that to y≈52 — so even where two
+              bangs meet, the cap above is already solid. No interior cutout,
+              no overlay needed: this single fill geometrically can't leave
+              a bald patch. */}
           <path
-            d="M 16 52
-               Q 10 26 28 14
-               Q 50 4 72 14
-               Q 90 26 84 52
-               Q 76 47 68 48
-               Q 58 46 50 49
-               Q 42 46 32 48
-               Q 24 47 16 52
+            d="M 16 50
+               Q 8 24 26 12
+               Q 50 4 74 12
+               Q 92 24 84 50
+               L 80 48
+               L 76 52
+               L 72 47
+               L 68 51
+               L 64 46
+               L 60 50
+               L 56 46
+               L 52 53
+               L 48 46
+               L 44 50
+               L 40 46
+               L 36 51
+               L 32 46
+               L 28 50
+               L 24 47
+               L 20 50
+               L 16 50
                Z"
             fill="#2a1505"
           />
 
-          {/* Ahoge — the classic anime cowlick poking up from the crown.
-              Pure character; adds zero ambiguity that there is hair on top. */}
+          {/* Ahoge — anime cowlick on the crown. */}
           <path
             d="M 46 11
                L 50 1
@@ -266,20 +282,13 @@ export function GappuAvatar({ mood, size = 72, className, peekTarget }: Props) {
           <path d="M20 50 L 22 60 L 26 56 Z" fill="#2a1505" />
           <path d="M80 50 L 78 60 L 74 56 Z" fill="#2a1505" />
 
-          {/* Soft wavy bang overlay — darker accent across the forehead for
-              depth, swept slightly to the right like a side-parted cut. Its
-              top is a smooth wave (no zig-zag valleys to expose face) and it
-              sits entirely inside the main cap so there is nowhere it can
-              show skin behind it. */}
+          {/* Subtle highlight band — a thin lighter stripe near the crown so
+              the hair reads as having dimension. Stays inside the main shape;
+              nothing it does can affect the silhouette or expose face. */}
           <path
-            d="M 22 46
-               Q 30 36 40 42
-               Q 48 46 54 40
-               Q 64 32 76 40
-               Q 80 45 76 49
-               Q 60 51 50 50
-               Q 36 51 24 50
-               Q 18 49 22 46
+            d="M 28 18
+               Q 50 12 72 18
+               Q 50 22 28 18
                Z"
             fill="#3a1f10"
           />
