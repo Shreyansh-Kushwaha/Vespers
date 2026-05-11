@@ -1,7 +1,9 @@
 import { Footnote } from "@/components/marketing/Footnote";
 import { MovementAnatomy } from "@/components/marketing/MovementAnatomy";
+import { MovementCallout } from "@/components/marketing/MovementCallout";
 import { MovementClose } from "@/components/marketing/MovementClose";
 import { MovementCompanion } from "@/components/marketing/MovementCompanion";
+import { MovementCompanions } from "@/components/marketing/MovementCompanions";
 import { MovementIndex } from "@/components/marketing/MovementIndex";
 import { MovementLetter } from "@/components/marketing/MovementLetter";
 import { MovementOpen } from "@/components/marketing/MovementOpen";
@@ -18,10 +20,12 @@ export default function LandingPage() {
       <SmoothScroll />
 
       <MovementOpen />
+      <MovementCallout />
       <MovementWhisper />
       <MovementLetter />
       <MovementAnatomy />
       <MovementCompanion />
+      <MovementCompanions />
       <MovementIndex />
       <MovementPractice />
       <MovementUnsigned />
