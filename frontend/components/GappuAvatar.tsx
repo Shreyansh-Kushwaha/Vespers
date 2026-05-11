@@ -221,10 +221,12 @@ export function GappuAvatar({ mood, size = 72, className, peekTarget }: Props) {
           {/* neck stub — thin, defines a jaw transition */}
           <rect x="44" y="82" width="12" height="9" fill="#FFE3C7" stroke="#D88E73" strokeWidth="1" />
 
-          {/* spiky back hair — jagged silhouette across the top of the head.
-              Drawn first so the face circle covers its lower portion. */}
+          {/* Back hair — a SOLID cap over the top half of the head. Spiky
+              outline on top, slightly wavy hairline across the forehead, no
+              carved-out interior. This is the layer that guarantees no bald
+              patch — the front fringe sits on top as decoration only. */}
           <path
-            d="M16 46
+            d="M16 47
                L 18 30
                L 22 18
                L 26 28
@@ -238,13 +240,12 @@ export function GappuAvatar({ mood, size = 72, className, peekTarget }: Props) {
                L 70 28
                L 74 18
                L 78 30
-               L 84 46
-               L 78 50
-               Q 72 38 60 34
-               L 56 28
-               Q 50 26 44 28
-               L 40 34
-               Q 28 38 22 50
+               L 84 47
+               Q 80 45 74 45
+               Q 66 44 58 44
+               Q 52 43 46 44
+               Q 38 44 30 45
+               Q 22 45 16 47
                Z"
             fill="#2a1505"
           />
@@ -268,23 +269,30 @@ export function GappuAvatar({ mood, size = 72, className, peekTarget }: Props) {
           <path d="M20 50 L 22 60 L 26 56 Z" fill="#2a1505" />
           <path d="M80 50 L 78 60 L 74 56 Z" fill="#2a1505" />
 
-          {/* front fringe — spiky, three angular tips */}
+          {/* Front fringe — darker overlay sitting on top of the solid cap.
+              Smaller, denser spikes; the bottom edge is the actual hairline
+              the user sees against the forehead. Valleys are shallow so it
+              also reads as a continuous fringe at the front. */}
           <path
-            d="M22 44
-               L 28 30
-               L 32 38
-               L 38 26
-               L 44 38
-               L 50 28
-               L 56 38
-               L 62 26
-               L 68 38
-               L 72 30
-               L 78 44
-               Q 72 40 64 40
-               Q 56 42 50 40
-               Q 44 42 36 40
-               Q 28 40 22 44
+            d="M22 45
+               L 26 36
+               L 30 30
+               L 34 36
+               L 38 28
+               L 42 36
+               L 46 30
+               L 50 34
+               L 54 30
+               L 58 36
+               L 62 28
+               L 66 36
+               L 70 30
+               L 74 36
+               L 78 45
+               Q 72 43 66 43
+               Q 58 42 50 43
+               Q 42 42 34 43
+               Q 28 43 22 45
                Z"
             fill="#3a1f10"
           />
