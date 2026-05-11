@@ -17,6 +17,14 @@ import { PaperSurface } from "@/components/marketing/PaperSurface";
 import { apiUrl } from "@/lib/api";
 import { useInactivity } from "@/lib/inactivity";
 import { readRiskFromHeaders, type RiskAssessment } from "@/lib/risk";
+import {
+  fetchEmotionCatalog,
+  readEmotion,
+  writeEmotion,
+  emotionPath,
+  type EmotionSelection,
+  type Primary,
+} from "@/lib/emotions";
 
 interface ChatMsg {
   id: string;
@@ -113,15 +121,27 @@ export default function Page() {
   const reactionIdRef = useRef(0);
   const reactionsFiredRef = useRef<Set<GappuReaction>>(new Set());
 
+  // Emotion-wheel selection (from /feel). Stored per recovery code.
+  // Applied to the *next* user turn only, then cleared.
+  const [emotion, setEmotion] = useState<EmotionSelection | null>(null);
+  const [emotionCatalog, setEmotionCatalog] = useState<Primary[]>([]);
+
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [inputWrapEl, setInputWrapEl] = useState<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
   const isProgrammaticScrollRef = useRef(false);
 
+  // Load emotion catalog once (small, cached).
+  useEffect(() => {
+    fetchEmotionCatalog().then(setEmotionCatalog).catch(() => {});
+  }, []);
+
   // Hydrate from saved recovery code.
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem(CODE_KEY) : null;
+    // Emotion selection (either per-code if we have one, or session-scoped).
+    setEmotion(readEmotion(saved));
     if (saved) {
       setCode(saved);
       setPersonaState(readPersona(saved));
@@ -152,6 +172,11 @@ export default function Page() {
     }
   }, []);
 
+  // Track that a manual persona switch should trigger the new persona to
+  // speak first. The actual opener is fired from a useEffect once `persona`
+  // state has settled, so the opener request carries the new persona.
+  const pendingPersonaOpenerRef = useRef(false);
+
   // Persona switch — emit a slim system notice inline and persist per code.
   const switchPersona = useCallback(
     (next: Persona) => {
@@ -171,6 +196,8 @@ export default function Page() {
             },
           ]);
         }
+        // Queue an opener so the new persona speaks first.
+        pendingPersonaOpenerRef.current = true;
         return next;
       });
     },
@@ -249,14 +276,23 @@ export default function Page() {
   );
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, opts?: { opener?: boolean }) => {
+      const isOpener = opts?.opener === true;
       const trimmed = text.trim();
-      if (!trimmed || streaming) return;
+      if (streaming) return;
+      if (!isOpener && !trimmed) return;
+      // Opener requires an emotion selection — without one the backend rejects.
+      if (isOpener && !emotion) return;
 
       const requestedPersona = persona;
-      const userMsg: ChatMsg = {
-        id: uid(), role: "user", content: trimmed, persona: requestedPersona,
-      };
+      const userMsg: ChatMsg | null = isOpener
+        ? null
+        : {
+            id: uid(),
+            role: "user",
+            content: trimmed,
+            persona: requestedPersona,
+          };
       const assistantMsg: ChatMsg = {
         id: uid(),
         role: "assistant",
@@ -265,9 +301,15 @@ export default function Page() {
         persona: requestedPersona,
       };
       stickToBottomRef.current = true;
-      setMessages((m) => [...m, userMsg, assistantMsg]);
-      setInput("");
+      setMessages((m) => (userMsg ? [...m, userMsg, assistantMsg] : [...m, assistantMsg]));
+      if (!isOpener) setInput("");
       setStreaming(true);
+      // Single-shot: emotion influences only the next assistant turn, then
+      // is cleared from both UI and storage so the conversation can move on.
+      if (emotion) {
+        writeEmotion(code, null);
+        setEmotion(null);
+      }
       if (requestedPersona === "gappu") {
         setGappuMood("thinking");
         // Hello wave fires on the very first message of a fresh gappu thread.
@@ -288,7 +330,15 @@ export default function Page() {
         const res = await fetch(apiUrl("/api/chat"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed, code, persona: requestedPersona }),
+          body: JSON.stringify({
+            message: isOpener ? "" : trimmed,
+            code,
+            persona: requestedPersona,
+            // Emotion-wheel selection applies only to this turn. Cleared
+            // immediately so subsequent free-text turns are not biased.
+            emotion: emotion ?? undefined,
+            opener: isOpener || undefined,
+          }),
         });
 
         const newCode = res.headers.get("X-Vespers-Code");
@@ -426,8 +476,37 @@ export default function Page() {
         bump();
       }
     },
-    [bump, code, persona, streaming, messages],
+    [bump, code, persona, streaming, messages, emotion],
   );
+
+  // Auto-opener: when the user lands on /app with an emotion selected (just
+  // came from the wheel) and nothing is in flight, the AI speaks first. We
+  // gate on `hydrated` so the prior thread has been restored before deciding
+  // whether to greet vs continue. We track the last emotion already used so
+  // hot reloads / re-renders don't double-fire.
+  const openerFiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hydrated || streaming || !emotion) return;
+    const key = `${emotion.primary}/${emotion.secondary ?? ""}/${emotion.tertiary ?? ""}`;
+    if (openerFiredRef.current === key) return;
+    openerFiredRef.current = key;
+    // Fire the opener — backend skips persisting any user message and the
+    // emotion chip clears as soon as the request leaves.
+    send("", { opener: true });
+  }, [hydrated, streaming, emotion, send]);
+
+  // Persona-switch opener: when the user toggles persona, the new persona
+  // speaks first. Runs once per switch (gated by pendingPersonaOpenerRef).
+  // Skipped if the wheel opener already fired or is in flight for this turn.
+  useEffect(() => {
+    if (!hydrated || streaming) return;
+    if (!pendingPersonaOpenerRef.current) return;
+    // If there's also an emotion selection in flight, let the wheel opener
+    // handle the greet — it carries strictly more context.
+    if (emotion) return;
+    pendingPersonaOpenerRef.current = false;
+    send("", { opener: true });
+  }, [hydrated, streaming, persona, emotion, send]);
 
   const handleUseCode = useCallback(async (newCode: string) => {
     setCode(newCode);
@@ -546,6 +625,12 @@ export default function Page() {
             >
               letters
             </Link>
+            <Link
+              href="/feel"
+              className="eyebrow hidden md:inline text-margin hover:text-aubergine transition-colors"
+            >
+              wheel
+            </Link>
           </div>
           <div className="flex items-center gap-3 sm:gap-5">
             <PersonaToggle
@@ -562,6 +647,27 @@ export default function Page() {
           </div>
         </div>
       </header>
+
+      {emotion && (
+        <div className="mx-auto max-w-[820px] w-full px-6 sm:px-10 lg:px-16 pt-3">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(11,26,51,0.18)] bg-[rgba(255,255,255,0.55)] px-3 py-1 text-xs">
+            <span className="eyebrow">feeling</span>
+            <span className="text-ink">
+              {emotionPath(emotionCatalog, emotion) || "selected"}
+            </span>
+            <button
+              onClick={() => {
+                writeEmotion(code, null);
+                setEmotion(null);
+              }}
+              className="opacity-60 hover:opacity-100"
+              aria-label="clear emotion"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       <div
         ref={scrollerRef}
@@ -636,14 +742,22 @@ export default function Page() {
                   </ol>
                 </div>
 
-                <div className="mt-14 hairline pt-5 flex items-baseline justify-between">
+                <div className="mt-14 hairline pt-5 flex items-baseline justify-between gap-6 flex-wrap">
                   <div className="eyebrow">or</div>
-                  <Link
-                    href="/letters/new"
-                    className="display italic text-[16px] text-aubergine hover:text-violetInk transition-colors"
-                  >
-                    write to yourself →
-                  </Link>
+                  <div className="flex items-baseline gap-6">
+                    <Link
+                      href="/feel"
+                      className="display italic text-[16px] text-aubergine hover:text-violetInk transition-colors"
+                    >
+                      name what you feel →
+                    </Link>
+                    <Link
+                      href="/letters/new"
+                      className="display italic text-[16px] text-aubergine hover:text-violetInk transition-colors"
+                    >
+                      write to yourself →
+                    </Link>
+                  </div>
                 </div>
               </motion.div>
             )}

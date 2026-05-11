@@ -20,7 +20,7 @@ export function MovementCallout() {
           <div className="mt-8 sm:mt-10 grid grid-cols-12 gap-6 items-end">
             <div className="col-span-12 sm:col-span-6">
               <a
-                href="/app"
+                href="/feel"
                 className="ink-link display text-[clamp(20px,2vw,28px)] tracking-tight"
               >
                 → begin a session

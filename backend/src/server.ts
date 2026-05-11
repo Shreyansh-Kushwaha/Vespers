@@ -15,6 +15,7 @@ import {
 } from "./routes/letters.js";
 import { closingRitualHandler } from "./routes/rituals.js";
 import { resourcesHandler } from "./routes/resources.js";
+import { emotionsHandler } from "./routes/emotions.js";
 
 const app = new Hono();
 
@@ -40,6 +41,7 @@ app.use(
       "X-Vespers-Risk-Level",
       "X-Vespers-Risk-Category",
       "X-Vespers-Show-Support",
+      "X-Vespers-Emotion",
     ],
     credentials: false,
     maxAge: 600,
@@ -71,6 +73,7 @@ app.delete("/api/session", sessionDeleteHandler);
 app.post("/api/transcribe", transcribeHandler);
 app.post("/api/rituals/closing", closingRitualHandler);
 app.get("/api/resources", resourcesHandler);
+app.get("/api/emotions", emotionsHandler);
 app.get("/api/letters", listLettersHandler);
 app.post("/api/letters", createLetterHandler);
 app.get("/api/letters/:id", getLetterHandler);

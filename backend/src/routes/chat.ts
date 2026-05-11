@@ -25,11 +25,28 @@ import {
 } from "../lib/recovery-code.js";
 import { classifyRisk } from "../lib/risk.js";
 import { summariseAndCompact, shouldSummarise } from "../lib/memory-summary.js";
+import {
+  buildEmotionDirective,
+  buildOpenerDirective,
+  resolveEmotion,
+  type EmotionSelection,
+} from "../lib/emotions.js";
 
 interface ChatBody {
   message?: string;
   code?: string | null;
   persona?: Persona;
+  /** Optional emotion-wheel selection for this turn (primary/secondary/tertiary keys). */
+  emotion?: EmotionSelection | null;
+  /** When true, the AI speaks first — no user message is recorded. Used right
+   *  after the emotion wheel handoff to bootstrap a session. */
+  opener?: boolean;
+}
+
+function isEmotionSelection(v: unknown): v is EmotionSelection {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.primary === "string";
 }
 
 function isPersona(p: unknown): p is Persona {
@@ -57,7 +74,11 @@ export async function chatHandler(c: Context) {
   }
 
   const userText = (body.message || "").trim();
-  if (!userText) return c.text("Empty message", 400);
+  const isOpener = body.opener === true;
+  if (!isOpener && !userText) return c.text("Empty message", 400);
+  // Openers no longer require an emotion — they also fire on a manual persona
+  // switch (so Gappu or Vespers speaks first when the user toggles into them).
+  // The directive adapts based on whether an emotion is present.
 
   // Default persona is "vespers" — keeps legacy clients (no persona field)
   // behaving exactly as before.
@@ -86,8 +107,11 @@ export async function chatHandler(c: Context) {
   }
 
   // Risk classification on the *current* user message — heuristic, in-process,
-  // never persisted, never logged externally.
-  const risk = classifyRisk(userText);
+  // never persisted, never logged externally. Opener turns have no user
+  // message to classify, so they always start at the "none" baseline.
+  const risk = isOpener
+    ? { level: "low" as const, category: undefined, showSupportBanner: false }
+    : classifyRisk(userText);
 
   // Crisis override: if the user picked Gappu but the message looks distressed,
   // step Vespers in for this single turn. The Gappu persona resumes next turn.
@@ -99,15 +123,43 @@ export async function chatHandler(c: Context) {
   const openingDirective = buildOpeningDirective(session, Date.now());
   const crisisDirective = buildCrisisDirective(risk);
 
+  // Optional emotion-wheel selection. Skip when the user is in acute distress —
+  // the crisis directive should drive tone in that case, not a stale wheel pick.
+  const emotionSel = isEmotionSelection(body.emotion) ? body.emotion : null;
+  const emotionResolved = risk.showSupportBanner ? null : resolveEmotion(emotionSel);
+  const emotionDirective = emotionResolved
+    ? buildEmotionDirective(emotionSel)
+    : "";
+
+  // Opener directive — only fires when the AI is speaking first.
+  const openerDirective = isOpener
+    ? buildOpenerDirective(emotionSel, session.messages.length > 0, effectivePersona)
+    : "";
+
+  // Stitch crisis + emotion directives together — both are tone directives.
+  const composedCrisisDirective = [
+    crisisHandoff
+      ? [crisisDirective, GAPPU_CRISIS_HANDOFF_DIRECTIVE].filter(Boolean).join("\n\n")
+      : crisisDirective,
+    emotionDirective,
+    openerDirective,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   const systemContent =
     effectivePersona === "gappu"
-      ? composeGappuSystemPrompt({ memoryContext, openingDirective, crisisDirective })
+      ? composeGappuSystemPrompt({
+          memoryContext,
+          openingDirective,
+          crisisDirective: [crisisDirective, emotionDirective, openerDirective]
+            .filter(Boolean)
+            .join("\n\n"),
+        })
       : composeSystemPrompt({
           memoryContext,
           openingDirective,
-          crisisDirective: crisisHandoff
-            ? [crisisDirective, GAPPU_CRISIS_HANDOFF_DIRECTIVE].filter(Boolean).join("\n\n")
-            : crisisDirective,
+          crisisDirective: composedCrisisDirective,
         });
 
   const client = new AzureOpenAI({ apiKey, endpoint, deployment, apiVersion });
@@ -118,8 +170,10 @@ export async function chatHandler(c: Context) {
       role: (m.role === "model" ? "assistant" : "user") as "user" | "assistant",
       content: m.content,
     })),
-    { role: "user", content: userText },
   ];
+  if (!isOpener) {
+    messages.push({ role: "user", content: userText });
+  }
 
   c.header("Content-Type", "text/plain; charset=utf-8");
   c.header("Cache-Control", "no-cache, no-transform");
@@ -134,6 +188,7 @@ export async function chatHandler(c: Context) {
   c.header("X-Vespers-Risk-Level", risk.level);
   if (risk.category) c.header("X-Vespers-Risk-Category", risk.category);
   c.header("X-Vespers-Show-Support", risk.showSupportBanner ? "1" : "0");
+  if (emotionResolved) c.header("X-Vespers-Emotion", emotionResolved.label);
 
   // Gappu runs hotter so jokes don't all sound the same; Vespers stays steady.
   const temperature = effectivePersona === "gappu" ? 0.95 : 0.85;
@@ -167,18 +222,30 @@ export async function chatHandler(c: Context) {
       // they were chatting with). When a crisis override flipped Gappu →
       // Vespers, record replyPersona so the assistant bubble still styles as
       // the stand-in even though the message belongs to the Gappu thread.
-      const turn: Message[] = [
-        { role: "user", content: userText, ts: now, persona: requestedPersona },
-        {
-          role: "model",
-          content: full,
-          ts: now + 1,
-          persona: requestedPersona,
-          ...(effectivePersona !== requestedPersona
-            ? { replyPersona: effectivePersona }
-            : {}),
-        },
-      ];
+      const turn: Message[] = isOpener
+        ? [
+            {
+              role: "model",
+              content: full,
+              ts: now,
+              persona: requestedPersona,
+              ...(effectivePersona !== requestedPersona
+                ? { replyPersona: effectivePersona }
+                : {}),
+            },
+          ]
+        : [
+            { role: "user", content: userText, ts: now, persona: requestedPersona },
+            {
+              role: "model",
+              content: full,
+              ts: now + 1,
+              persona: requestedPersona,
+              ...(effectivePersona !== requestedPersona
+                ? { replyPersona: effectivePersona }
+                : {}),
+            },
+          ];
       const updated = await appendMessages(code!, turn);
 
       // Fire-and-forget: fold older history into structured memory if needed.

@@ -15,7 +15,7 @@ export function MovementOpen() {
             the play room
           </a>
           <span className="eyebrow text-margin/40">·</span>
-          <a href="/app" className="eyebrow ink-link no-underline">
+          <a href="/feel" className="eyebrow ink-link no-underline">
             enter →
           </a>
         </nav>
