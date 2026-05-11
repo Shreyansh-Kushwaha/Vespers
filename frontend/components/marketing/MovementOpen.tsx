@@ -10,12 +10,18 @@ export function MovementOpen() {
       {/* tiny mast */}
       <header className="mx-auto max-w-[1240px] w-full px-6 sm:px-10 lg:px-16 pt-8 sm:pt-10 flex items-center justify-between">
         <span className="eyebrow">Vespers — est. for difficult evenings</span>
-        <nav className="flex items-center gap-5 sm:gap-6">
-          <a href="/play" className="eyebrow ink-link no-underline">
+        <nav className="flex items-center gap-5 sm:gap-6 lg:gap-8">
+          <a
+            href="/play"
+            className="eyebrow ink-link no-underline lg:text-[13.5px] lg:tracking-[0.24em] lg:px-4 lg:py-2 lg:rounded-full lg:border lg:border-[rgba(11,26,51,0.22)] lg:hover:bg-[rgba(255,255,255,0.55)] transition-colors"
+          >
             the play room
           </a>
-          <span className="eyebrow text-margin/40">·</span>
-          <a href="/feel" className="eyebrow ink-link no-underline">
+          <span className="eyebrow text-margin/40 lg:hidden">·</span>
+          <a
+            href="/feel"
+            className="eyebrow ink-link no-underline lg:text-[13.5px] lg:tracking-[0.24em] lg:px-4 lg:py-2 lg:rounded-full lg:bg-[#0B1A33] lg:text-[#FFE6C9] lg:hover:opacity-90 transition-opacity"
+          >
             enter →
           </a>
         </nav>
