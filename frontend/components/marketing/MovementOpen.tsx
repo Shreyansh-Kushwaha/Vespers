@@ -24,7 +24,7 @@ export function MovementOpen() {
       {/* wordmark, set asymmetrically rather than dead-center */}
       <div className="flex-1 grid grid-cols-12 items-center mx-auto max-w-[1240px] w-full px-6 sm:px-10 lg:px-16">
         <div className="col-span-12 md:col-start-2 md:col-span-10 lg:col-start-2 lg:col-span-9">
-          <div className="flex items-end gap-6">
+          <div className="flex items-end gap-6 justify-center md:justify-start">
             <WordmarkVespers />
           </div>
 

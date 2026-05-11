@@ -14,7 +14,7 @@ interface Props {
  */
 export function WordmarkVespers({ className = "" }: Props) {
   return (
-    <h1 className={`relative leading-none ${className}`}>
+    <h1 className={`relative leading-none text-center md:text-left ${className}`}>
       <span className="sr-only">Vespers</span>
       <span
         aria-hidden
