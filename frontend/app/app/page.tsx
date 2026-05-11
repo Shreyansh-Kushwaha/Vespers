@@ -98,6 +98,18 @@ export default function Page() {
   // Click / drag / fall state for the interactive avatar.
   const [gappuDazed, setGappuDazed] = useState(false);
   const [gappuFallen, setGappuFallen] = useState(false);
+  // Manual drag — framer's `drag` snaps the wrapper back to origin on release,
+  // which made the fall always start from (0,0) instead of where you dropped
+  // him. We track pointer state ourselves so the fall begins at the release
+  // position.
+  const [gappuPos, setGappuPos] = useState({ x: 0, y: 0 });
+  const [gappuFallFrom, setGappuFallFrom] = useState({ x: 0, y: 0 });
+  const [gappuPointerActive, setGappuPointerActive] = useState(false);
+  const gappuDownRef = useRef<{
+    startX: number; startY: number;
+    baseX: number; baseY: number;
+    moved: boolean;
+  } | null>(null);
   const reactionIdRef = useRef(0);
   const reactionsFiredRef = useRef<Set<GappuReaction>>(new Set());
 
@@ -661,46 +673,106 @@ export default function Page() {
           <div className="relative mx-auto w-full max-w-[820px] px-6 sm:px-10 lg:px-16 py-5 sm:py-6 space-y-4">
             {persona === "gappu" && (
               <motion.div
-                drag
-                dragMomentum={false}
-                dragElastic={0}
-                dragSnapToOrigin
-                onTap={() => {
-                  // Click without drag → "beat" Gappu
-                  if (gappuDazed || gappuFallen) return;
-                  setGappuDazed(true);
-                  setTimeout(() => setGappuDazed(false), 900);
+                onPointerDown={(e) => {
+                  if (gappuFallen) return;
+                  (e.target as Element).setPointerCapture?.(e.pointerId);
+                  gappuDownRef.current = {
+                    startX: e.clientX, startY: e.clientY,
+                    baseX: gappuPos.x, baseY: gappuPos.y,
+                    moved: false,
+                  };
+                  setGappuPointerActive(true);
                 }}
-                onDragStart={() => setGappuDazed(false)}
-                onDragEnd={() => {
-                  // Release → fall + dazed
+                onPointerMove={(e) => {
+                  const ref = gappuDownRef.current;
+                  if (!ref) return;
+                  const dx = e.clientX - ref.startX;
+                  const dy = e.clientY - ref.startY;
+                  if (!ref.moved && Math.hypot(dx, dy) > 5) {
+                    ref.moved = true;
+                  }
+                  if (ref.moved) {
+                    setGappuPos({ x: ref.baseX + dx, y: ref.baseY + dy });
+                  }
+                }}
+                onPointerUp={(e) => {
+                  const ref = gappuDownRef.current;
+                  gappuDownRef.current = null;
+                  setGappuPointerActive(false);
+                  if (!ref) return;
+                  try {
+                    (e.target as Element).releasePointerCapture?.(e.pointerId);
+                  } catch { /* ignore */ }
+                  if (!ref.moved) {
+                    // Click → beat
+                    if (gappuFallen) return;
+                    setGappuDazed(true);
+                    setTimeout(() => setGappuDazed(false), 900);
+                    return;
+                  }
+                  // Drag release → fall from the release point
+                  setGappuFallFrom({ x: gappuPos.x, y: gappuPos.y });
                   setGappuFallen(true);
                   setGappuDazed(true);
                   setTimeout(() => {
                     setGappuFallen(false);
                     setGappuDazed(false);
+                    setGappuPos({ x: 0, y: 0 });
                   }, 2400);
+                }}
+                onPointerCancel={() => {
+                  gappuDownRef.current = null;
+                  setGappuPointerActive(false);
                 }}
                 className="absolute select-none cursor-grab active:cursor-grabbing"
                 style={{ top: -56, right: 18, touchAction: "none" }}
+                animate={
+                  gappuFallen
+                    ? {
+                        x: [
+                          gappuFallFrom.x,
+                          gappuFallFrom.x + 6,
+                          gappuFallFrom.x + 4,
+                          gappuFallFrom.x + 8,
+                        ],
+                        y: [
+                          gappuFallFrom.y,
+                          gappuFallFrom.y + 70,
+                          gappuFallFrom.y + 60,
+                          gappuFallFrom.y + 78,
+                        ],
+                        rotate: [0, 180, 210, 240],
+                      }
+                    : {
+                        x: gappuPos.x,
+                        y: gappuPos.y,
+                        rotate: 0,
+                      }
+                }
+                transition={
+                  gappuFallen
+                    ? {
+                        duration: 1.6,
+                        ease: "easeOut",
+                        times: [0, 0.45, 0.7, 1],
+                      }
+                    : gappuPointerActive
+                    ? { duration: 0 }
+                    : { type: "spring", stiffness: 220, damping: 18 }
+                }
                 whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.95 }}
                 aria-hidden
               >
                 <motion.div
                   animate={
-                    gappuFallen
-                      ? { rotate: [0, 180, 220, 250, 240], y: [0, 60, 80, 76, 80] }
-                      : gappuDazed
+                    gappuDazed && !gappuFallen
                       ? { x: [-3, 3, -2, 2, 0], rotate: [-3, 3, -2, 2, 0] }
-                      : { rotate: 0, y: 0, x: 0 }
+                      : { x: 0, rotate: 0 }
                   }
                   transition={
-                    gappuFallen
-                      ? { duration: 1.6, ease: "easeOut", times: [0, 0.35, 0.55, 0.75, 1] }
-                      : gappuDazed
+                    gappuDazed && !gappuFallen
                       ? { duration: 0.45 }
-                      : { type: "spring", stiffness: 220, damping: 18 }
+                      : { duration: 0.2 }
                   }
                 >
                   <GappuAvatar
