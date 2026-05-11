@@ -8,10 +8,15 @@ import {
   composeSystemPrompt,
 } from "../lib/prompt.js";
 import {
+  composeGappuSystemPrompt,
+  GAPPU_CRISIS_HANDOFF_DIRECTIVE,
+} from "../lib/prompt-gappu.js";
+import {
   appendMessages,
   createSession,
   getSession,
   type Message,
+  type Persona,
 } from "../lib/memory.js";
 import {
   generateRecoveryCode,
@@ -24,6 +29,11 @@ import { summariseAndCompact, shouldSummarise } from "../lib/memory-summary.js";
 interface ChatBody {
   message?: string;
   code?: string | null;
+  persona?: Persona;
+}
+
+function isPersona(p: unknown): p is Persona {
+  return p === "vespers" || p === "gappu";
 }
 
 export async function chatHandler(c: Context) {
@@ -48,6 +58,10 @@ export async function chatHandler(c: Context) {
 
   const userText = (body.message || "").trim();
   if (!userText) return c.text("Empty message", 400);
+
+  // Default persona is "vespers" — keeps legacy clients (no persona field)
+  // behaving exactly as before.
+  const requestedPersona: Persona = isPersona(body.persona) ? body.persona : "vespers";
 
   let code = body.code ? normalizeCode(body.code) : null;
   let isNewSession = false;
@@ -75,11 +89,26 @@ export async function chatHandler(c: Context) {
   // never persisted, never logged externally.
   const risk = classifyRisk(userText);
 
-  const systemContent = composeSystemPrompt({
-    memoryContext: buildMemoryContext(session.memory),
-    openingDirective: buildOpeningDirective(session, Date.now()),
-    crisisDirective: buildCrisisDirective(risk),
-  });
+  // Crisis override: if the user picked Gappu but the message looks distressed,
+  // step Vespers in for this single turn. The Gappu persona resumes next turn.
+  const effectivePersona: Persona =
+    requestedPersona === "gappu" && risk.showSupportBanner ? "vespers" : requestedPersona;
+  const crisisHandoff = requestedPersona === "gappu" && effectivePersona === "vespers";
+
+  const memoryContext = buildMemoryContext(session.memory);
+  const openingDirective = buildOpeningDirective(session, Date.now());
+  const crisisDirective = buildCrisisDirective(risk);
+
+  const systemContent =
+    effectivePersona === "gappu"
+      ? composeGappuSystemPrompt({ memoryContext, openingDirective, crisisDirective })
+      : composeSystemPrompt({
+          memoryContext,
+          openingDirective,
+          crisisDirective: crisisHandoff
+            ? [crisisDirective, GAPPU_CRISIS_HANDOFF_DIRECTIVE].filter(Boolean).join("\n\n")
+            : crisisDirective,
+        });
 
   const client = new AzureOpenAI({ apiKey, endpoint, deployment, apiVersion });
 
@@ -97,10 +126,17 @@ export async function chatHandler(c: Context) {
   c.header("X-Accel-Buffering", "no");
   c.header("X-Vespers-Code", code);
   c.header("X-Vespers-New-Session", isNewSession ? "1" : "0");
+  // Persona that actually answered this turn. The frontend uses this to style
+  // the bubble and to know when a crisis override flipped the persona back.
+  c.header("X-Vespers-Persona", effectivePersona);
+  c.header("X-Vespers-Persona-Requested", requestedPersona);
   // Risk header is purely advisory for the UI banner. Never includes raw text.
   c.header("X-Vespers-Risk-Level", risk.level);
   if (risk.category) c.header("X-Vespers-Risk-Category", risk.category);
   c.header("X-Vespers-Show-Support", risk.showSupportBanner ? "1" : "0");
+
+  // Gappu runs hotter so jokes don't all sound the same; Vespers stays steady.
+  const temperature = effectivePersona === "gappu" ? 0.95 : 0.85;
 
   return stream(c, async (s) => {
     let full = "";
@@ -109,7 +145,7 @@ export async function chatHandler(c: Context) {
         model: deployment,
         messages,
         stream: true,
-        temperature: 0.85,
+        temperature,
         top_p: 0.95,
         max_completion_tokens: 700,
       });
@@ -127,9 +163,21 @@ export async function chatHandler(c: Context) {
       await s.write(`\n\n[Vespers had trouble responding: ${msg}]`);
     } finally {
       const now = Date.now();
+      // Both halves of the turn live in the user's CURRENT thread (the persona
+      // they were chatting with). When a crisis override flipped Gappu →
+      // Vespers, record replyPersona so the assistant bubble still styles as
+      // the stand-in even though the message belongs to the Gappu thread.
       const turn: Message[] = [
-        { role: "user", content: userText, ts: now },
-        { role: "model", content: full, ts: now + 1 },
+        { role: "user", content: userText, ts: now, persona: requestedPersona },
+        {
+          role: "model",
+          content: full,
+          ts: now + 1,
+          persona: requestedPersona,
+          ...(effectivePersona !== requestedPersona
+            ? { replyPersona: effectivePersona }
+            : {}),
+        },
       ];
       const updated = await appendMessages(code!, turn);
 

@@ -1,11 +1,22 @@
 import { getSupabase, SESSIONS_TABLE } from "./supabase.js";
 
 export type Role = "user" | "model";
+export type Persona = "vespers" | "gappu";
 
 export interface Message {
   role: Role;
   content: string;
   ts: number;
+  /** Thread the message belongs to — always set to the persona the user was
+   *  in when they sent the turn. Drives filtering: switching personas in the
+   *  UI shows only that persona's thread. Optional — older messages predate
+   *  this field and are treated as "vespers" by default. */
+  persona?: Persona;
+  /** Only set on assistant messages when a crisis override flipped the
+   *  effective persona away from the requested one (e.g. Gappu was requested
+   *  but Vespers stepped in for the turn). Drives bubble styling so the
+   *  reply still visually reads as the stand-in. */
+  replyPersona?: Persona;
 }
 
 export interface SessionMemory {
