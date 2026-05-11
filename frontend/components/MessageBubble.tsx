@@ -67,29 +67,6 @@ export function MessageBubble({ role, content, pending, persona }: Props) {
           <p className="display whitespace-pre-wrap break-words text-[16px] sm:text-[17px] leading-[1.7] italic text-ink/90">
             {content}
           </p>
-        ) : isGappu ? (
-          <div
-            className={[
-              "relative break-words text-[16.5px] sm:text-[17.5px] leading-[1.65]",
-              "rounded-[14px] rounded-tl-[4px] px-5 sm:px-6 py-4 sm:py-5",
-              // warm saffron/marigold wash, generous corner radius (more playful)
-              "bg-gradient-to-br from-[#FFE7B8] via-[#FFD89A] to-[#FFC066]",
-              "text-[#3a1f00]",
-              "shadow-[0_1px_0_rgba(184,90,30,0.18)]",
-              "[&_p]:mt-0 [&_p+p]:mt-2.5",
-              "[&_strong]:font-semibold [&_strong]:text-[#8a3a06]",
-              "[&_em]:italic",
-              "[&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-3 [&_ol]:space-y-1.5",
-              "[&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-3 [&_ul]:space-y-1.5",
-              "[&_li]:pl-1 [&_li_p]:my-0",
-              "[&_a]:text-[#8a3a06] [&_a]:underline [&_a]:underline-offset-2",
-              "[&_code]:font-mono [&_code]:text-[0.9em] [&_code]:bg-black/[0.06] [&_code]:px-1 [&_code]:py-[1px] [&_code]:rounded",
-              // larger emoji size so dad-jokes land
-              "[&_p]:[&_*]:text-[1.05em]",
-            ].join(" ")}
-          >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-          </div>
         ) : (
           <div
             className={[
