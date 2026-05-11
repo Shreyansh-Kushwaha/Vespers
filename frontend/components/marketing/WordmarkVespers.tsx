@@ -15,12 +15,12 @@ interface Props {
 export function WordmarkVespers({ className = "" }: Props) {
   return (
     <h1
-      className={`relative leading-none w-full text-center md:w-auto md:text-left ${className}`}
+      className={`relative leading-none w-full flex justify-center md:block ${className}`}
     >
       <span className="sr-only">Vespers</span>
       <span
         aria-hidden
-        className="script wordmark-wipe inline-block text-[15vw] sm:text-[17vw] lg:text-[14rem] xl:text-[16rem] bg-gradient-to-r from-aubergine to-violetInk bg-clip-text text-transparent"
+        className="script wordmark-wipe block text-[14vw] sm:text-[17vw] lg:text-[14rem] xl:text-[16rem] bg-gradient-to-r from-aubergine to-violetInk bg-clip-text text-transparent"
         style={{ paddingBottom: "0.32em" }}
       >
         Vespers
