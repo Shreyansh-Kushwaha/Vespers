@@ -34,7 +34,7 @@ export interface Tertiary {
   /** Physical exercise prompt (from the spec). */
   exercise?: string;
   /** Optional pointer to an existing Vespers quiet-object that complements this emotion. */
-  quietObject?: "koi" | "wash" | "candle";
+  quietObject?: "koi" | "wash" | "candle" | "breathe";
 }
 
 export interface Secondary {
@@ -203,6 +203,7 @@ const SAD: Primary = {
           },
           exercise:
             "Join a group outdoor activity like yoga, walking, or a sports class and have small conversations that remind you you're supported and capable. 🌱💪",
+          quietObject: "breathe",
         },
       ],
     },
@@ -384,7 +385,7 @@ const SURPRISED: Primary = {
           },
           exercise:
             "Take a slow barefoot walk on grass or sand to help your body feel grounded and safe again.",
-          quietObject: "koi",
+          quietObject: "breathe",
         },
         {
           key: "dismayed",
@@ -581,7 +582,7 @@ const FEARFUL: Primary = {
   definition:
     "Feeling scared, anxious, worried, or uncertain about something that might happen.",
   tone:
-    "Steady and present. Slow pace. Name the body. Offer a small grounding technique (5-4-3-2-1 or physiological sigh) when it fits.",
+    "Steady and present. Slow pace. Name the body. Offer a small grounding technique (5-4-3-2-1 or physiological sigh) when it fits. If the body is clearly running the show — racing heart, tight chest, hyperventilation, panic — offer [the breath](/play/breathe) by name in one short line.",
   secondaries: [],
 };
 
@@ -603,7 +604,7 @@ const OVERWHELMED: Primary = {
   definition:
     "Feeling stretched thin, foggy, exhausted, or like there is too much at once.",
   tone:
-    "Very slow, very small. One thing at a time. Lower the volume of the conversation. Offer one breath, one micro-step, or a quiet object.",
+    "Very slow, very small. One thing at a time. Lower the volume of the conversation. Offer one breath, one micro-step, or a quiet object — when the body is racing, [the breath](/play/breathe) is the first stop.",
   secondaries: [],
 };
 

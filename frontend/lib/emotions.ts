@@ -23,7 +23,7 @@ export interface Tertiary {
   activity?: { name: string; description: string };
   meditation?: { name: string; description: string };
   exercise?: string;
-  quietObject?: "koi" | "wash" | "candle";
+  quietObject?: "koi" | "wash" | "candle" | "breathe";
 }
 
 export interface Secondary {

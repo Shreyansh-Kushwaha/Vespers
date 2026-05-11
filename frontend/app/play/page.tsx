@@ -40,6 +40,15 @@ const GAMES: Game[] = [
       "a wick, a quiet flame. the wax falls slowly while it burns. you can blow it out when you're ready. a closing ritual, or just somewhere to be still.",
     duration: "for as long as the candle stays lit.",
   },
+  {
+    slug: "breathe",
+    number: "iv",
+    title: "the breath",
+    caption: "a small thing to follow",
+    body:
+      "a slow circle that grows and shrinks. inhale as it widens, exhale as it narrows. three named techniques — box, four-seven-eight, physiological sigh. for when the chest is tight, the room is loud, or the hands won't sit still.",
+    duration: "two minutes is enough. five is more.",
+  },
 ];
 
 export default function PlayIndex() {
@@ -57,7 +66,7 @@ export default function PlayIndex() {
       </header>
 
       <section className="mx-auto max-w-[1240px] w-full px-6 sm:px-10 lg:px-16 pt-20 sm:pt-28 pb-16">
-        <div className="eyebrow mb-10 sm:mb-14">§ play — three quiet objects</div>
+        <div className="eyebrow mb-10 sm:mb-14">§ play — four quiet objects</div>
         <h1 className="display text-[clamp(34px,5vw,72px)] leading-[1.05] tracking-[-0.02em] text-ink max-w-3xl">
           when the words are too much,{" "}
           <span className="script text-aubergine text-[1.05em] inline-block align-baseline">
@@ -66,7 +75,7 @@ export default function PlayIndex() {
           to do with your hands.
         </h1>
         <p className="mt-8 text-margin text-[14.5px] leading-[1.75] max-w-xl">
-          three small visual objects. nothing to win, no score, no ending. you
+          four small visual objects. nothing to win, no score, no ending. you
           can leave at any time, and you can always go back to the conversation.
         </p>
       </section>
