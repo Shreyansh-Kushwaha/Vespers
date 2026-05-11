@@ -11,6 +11,8 @@ const FORWARD_HEADERS = [
   "X-Vespers-Risk-Level",
   "X-Vespers-Risk-Category",
   "X-Vespers-Show-Support",
+  "X-Vespers-Persona",
+  "X-Vespers-Persona-Requested",
 ];
 
 export async function POST(req: NextRequest) {

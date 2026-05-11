@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChatInput } from "@/components/ChatInput";
-import { MessageBubble, type ChatRole } from "@/components/MessageBubble";
+import {
+  GappuAvatar, looksLikeLaughter, type GappuMood,
+} from "@/components/GappuAvatar";
+import { MessageBubble, type ChatRole, type Persona } from "@/components/MessageBubble";
+import { PersonaToggle } from "@/components/PersonaToggle";
 import { RecoveryCodePill } from "@/components/RecoveryCodePill";
 import { CrisisSupport } from "@/components/CrisisSupport";
 import { ClosingRitual } from "@/components/ClosingRitual";
@@ -18,6 +22,12 @@ interface ChatMsg {
   role: ChatRole;
   content: string;
   pending?: boolean;
+  /** Thread the message belongs to. Drives per-persona filtering. */
+  persona?: Persona;
+  /** Only set on assistant messages when a crisis override made the reply
+   *  come from the stand-in persona; used for bubble styling so the rendered
+   *  bubble still reads as the stand-in. */
+  replyPersona?: Persona;
 }
 
 const CODE_KEY = "vespers.code";
@@ -25,11 +35,45 @@ const CLOSING_SHOWN_KEY = "vespers.closing.lastShownTs";
 const CLOSING_COOLDOWN_MS = 1000 * 60 * 60 * 6; // 6h between auto-prompts
 const INACTIVITY_MS = 1000 * 60 * 10; // 10 min
 
-const PROMPTS = [
+/** Persona persistence is per-code (a returning user gets the same companion
+ *  they were last talking to). Pre-code sessions fall back to a session-level
+ *  key so the toggle survives a refresh before the first message. */
+const PERSONA_KEY_PREFIX = "vespers.persona.";
+const PERSONA_KEY_SESSION = "vespers.persona.session";
+function personaKey(code: string | null): string {
+  return code ? PERSONA_KEY_PREFIX + code : PERSONA_KEY_SESSION;
+}
+function readPersona(code: string | null): Persona {
+  if (typeof localStorage === "undefined") return "vespers";
+  const v = localStorage.getItem(personaKey(code));
+  return v === "gappu" ? "gappu" : "vespers";
+}
+function writePersona(code: string | null, p: Persona): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(personaKey(code), p);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+const PERSONA_SWITCH_NOTICE: Record<Persona, string> = {
+  gappu: "switched to gappu — ready to talk bakwaas",
+  vespers: "switched to vespers — soft landing",
+};
+
+const VESPERS_PROMPTS = [
   "i've been feeling stretched thin lately.",
   "help me untangle what i'm feeling right now.",
   "i'm anxious about something and can't slow down.",
   "i just need someone to listen for a minute.",
+];
+
+const GAPPU_PROMPTS = [
+  "yaar mood off hai, kuch bata na",
+  "boss roast me kar do thoda, mood lift kar",
+  "aaj kuch productive nahi kiya, lecture mat dena",
+  "bas bakwaas suni hai, ek joke maar",
 ];
 
 function uid() {
@@ -44,9 +88,12 @@ export default function Page() {
   const [hydrated, setHydrated] = useState(false);
   const [risk, setRisk] = useState<RiskAssessment | null>(null);
   const [closingOpen, setClosingOpen] = useState(false);
+  const [persona, setPersonaState] = useState<Persona>("vespers");
+  const [gappuMood, setGappuMood] = useState<GappuMood>("idle");
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [inputWrapEl, setInputWrapEl] = useState<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
   const isProgrammaticScrollRef = useRef(false);
 
@@ -55,15 +102,21 @@ export default function Page() {
     const saved = typeof window !== "undefined" ? localStorage.getItem(CODE_KEY) : null;
     if (saved) {
       setCode(saved);
+      setPersonaState(readPersona(saved));
       fetch(apiUrl(`/api/session?code=${encodeURIComponent(saved)}`))
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (data?.ok && Array.isArray(data.messages)) {
             const restored: ChatMsg[] = data.messages.map(
-              (m: { role: string; content: string }) => ({
+              (m: { role: string; content: string; persona?: string; replyPersona?: string }) => ({
                 id: uid(),
                 role: m.role === "model" ? "assistant" : "user",
                 content: m.content,
+                persona: m.persona === "gappu" ? "gappu" : "vespers",
+                replyPersona:
+                  m.replyPersona === "gappu" || m.replyPersona === "vespers"
+                    ? m.replyPersona
+                    : undefined,
               }),
             );
             setMessages(restored);
@@ -72,9 +125,35 @@ export default function Page() {
         .catch(() => {})
         .finally(() => setHydrated(true));
     } else {
+      setPersonaState(readPersona(null));
       setHydrated(true);
     }
   }, []);
+
+  // Persona switch — emit a slim system notice inline and persist per code.
+  const switchPersona = useCallback(
+    (next: Persona) => {
+      setPersonaState((cur) => {
+        if (cur === next) return cur;
+        writePersona(code, next);
+        if (messages.length > 0) {
+          setMessages((m) => [
+            ...m,
+            {
+              id: uid(),
+              role: "system",
+              content: PERSONA_SWITCH_NOTICE[next],
+              // The notice announces arrival into the new thread, so it
+              // lives there — not in the one being left behind.
+              persona: next,
+            },
+          ]);
+        }
+        return next;
+      });
+    },
+    [code, messages.length],
+  );
 
   // Sticky-to-bottom scroll detection.
   useEffect(() => {
@@ -152,24 +231,29 @@ export default function Page() {
       const trimmed = text.trim();
       if (!trimmed || streaming) return;
 
-      const userMsg: ChatMsg = { id: uid(), role: "user", content: trimmed };
+      const requestedPersona = persona;
+      const userMsg: ChatMsg = {
+        id: uid(), role: "user", content: trimmed, persona: requestedPersona,
+      };
       const assistantMsg: ChatMsg = {
         id: uid(),
         role: "assistant",
         content: "",
         pending: true,
+        persona: requestedPersona,
       };
       stickToBottomRef.current = true;
       setMessages((m) => [...m, userMsg, assistantMsg]);
       setInput("");
       setStreaming(true);
+      if (requestedPersona === "gappu") setGappuMood("thinking");
       bump();
 
       try {
         const res = await fetch(apiUrl("/api/chat"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: trimmed, code }),
+          body: JSON.stringify({ message: trimmed, code, persona: requestedPersona }),
         });
 
         const newCode = res.headers.get("X-Vespers-Code");
@@ -177,9 +261,45 @@ export default function Page() {
           setCode(newCode);
           try {
             localStorage.setItem(CODE_KEY, newCode);
+            // Migrate session-scoped persona pref onto the freshly minted code
+            // so a returning user finds the same companion.
+            const sessionPref = localStorage.getItem(PERSONA_KEY_SESSION);
+            if (sessionPref === "gappu" || sessionPref === "vespers") {
+              writePersona(newCode, sessionPref);
+            }
           } catch {
             /* storage unavailable */
           }
+        }
+
+        // Effective persona — backend may have flipped to vespers on a crisis
+        // turn. The MESSAGE still belongs to the user's thread (requested
+        // persona); we just style the assistant bubble as the stand-in via
+        // `replyPersona`. Persona preference is NOT changed.
+        const effective = res.headers.get("X-Vespers-Persona");
+        const effectivePersona: Persona = effective === "gappu" ? "gappu" : "vespers";
+        if (effectivePersona !== requestedPersona) {
+          setMessages((m) => {
+            const withNotice: ChatMsg[] = [...m];
+            const idx = withNotice.findIndex((x) => x.id === assistantMsg.id);
+            const notice: ChatMsg = {
+              id: uid(),
+              role: "system",
+              content:
+                requestedPersona === "gappu"
+                  ? "gappu stepped aside — vespers is here for this one"
+                  : "vespers stepped aside — gappu is here",
+              // Notice belongs to the thread the user is in.
+              persona: requestedPersona,
+            };
+            if (idx >= 0) withNotice.splice(idx, 0, notice);
+            else withNotice.push(notice);
+            return withNotice.map((x) =>
+              x.id === assistantMsg.id
+                ? { ...x, replyPersona: effectivePersona }
+                : x,
+            );
+          });
         }
 
         // Risk assessment travels in headers — never in the streamed body.
@@ -203,10 +323,25 @@ export default function Page() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let acc = "";
+        let gotFirstChunk = false;
+        let laughed = false;
+        let laughResetId: ReturnType<typeof setTimeout> | null = null;
+        // Only drive avatar moods while Gappu's persona actually answered —
+        // crisis override could have flipped effectivePersona to vespers.
+        const driveAvatar = requestedPersona === "gappu" && effectivePersona === "gappu";
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
           acc += decoder.decode(value, { stream: true });
+          if (!gotFirstChunk) {
+            gotFirstChunk = true;
+            if (driveAvatar) setGappuMood("talking");
+          }
+          if (driveAvatar && !laughed && looksLikeLaughter(acc)) {
+            laughed = true;
+            setGappuMood("laughing");
+            laughResetId = setTimeout(() => setGappuMood("talking"), 1600);
+          }
           setMessages((m) =>
             m.map((msg) =>
               msg.id === assistantMsg.id
@@ -214,6 +349,14 @@ export default function Page() {
                 : msg,
             ),
           );
+        }
+        if (laughResetId) clearTimeout(laughResetId);
+        if (driveAvatar) {
+          // settle on smiling if the reply ended on a laughy note, otherwise idle
+          setGappuMood(looksLikeLaughter(acc) ? "smiling" : "idle");
+        } else if (requestedPersona === "gappu") {
+          // crisis turn — keep mascot calm
+          setGappuMood("idle");
         }
       } catch (err) {
         const message =
@@ -227,14 +370,17 @@ export default function Page() {
         );
       } finally {
         setStreaming(false);
+        // Don't strand the mascot in "thinking" if the stream never started.
+        setGappuMood((m) => (m === "thinking" ? "idle" : m));
         bump();
       }
     },
-    [bump, code, streaming],
+    [bump, code, persona, streaming],
   );
 
   const handleUseCode = useCallback(async (newCode: string) => {
     setCode(newCode);
+    setPersonaState(readPersona(newCode));
     try {
       localStorage.setItem(CODE_KEY, newCode);
     } catch {
@@ -246,10 +392,15 @@ export default function Page() {
         const data = await res.json();
         if (data?.ok && Array.isArray(data.messages)) {
           setMessages(
-            data.messages.map((m: { role: string; content: string }) => ({
+            data.messages.map((m: { role: string; content: string; persona?: string; replyPersona?: string }) => ({
               id: uid(),
               role: m.role === "model" ? "assistant" : "user",
               content: m.content,
+              persona: m.persona === "gappu" ? "gappu" : "vespers",
+              replyPersona:
+                m.replyPersona === "gappu" || m.replyPersona === "vespers"
+                  ? m.replyPersona
+                  : undefined,
             })),
           );
           return;
@@ -269,9 +420,11 @@ export default function Page() {
     setMessages([]);
     setRisk(null);
     setInput("");
+    setPersonaState("vespers");
     try {
       localStorage.removeItem(CODE_KEY);
       localStorage.removeItem(CLOSING_SHOWN_KEY);
+      localStorage.removeItem(PERSONA_KEY_SESSION);
     } catch {
       /* ignore */
     }
@@ -291,9 +444,12 @@ export default function Page() {
     setMessages([]);
     setRisk(null);
     setInput("");
+    setPersonaState("vespers");
     try {
       localStorage.removeItem(CODE_KEY);
       localStorage.removeItem(CLOSING_SHOWN_KEY);
+      localStorage.removeItem(PERSONA_KEY_SESSION);
+      if (codeToDelete) localStorage.removeItem(personaKey(codeToDelete));
     } catch {
       /* ignore */
     }
@@ -308,14 +464,20 @@ export default function Page() {
     }
   }, [code]);
 
-  const empty = hydrated && messages.length === 0;
+  // Per-persona thread: only show messages belonging to the active persona.
+  // Legacy messages without a persona field are treated as Vespers.
+  const visibleMessages = messages.filter(
+    (m) => (m.persona ?? "vespers") === persona,
+  );
+  const empty = hydrated && visibleMessages.length === 0;
+  const prompts = persona === "gappu" ? GAPPU_PROMPTS : VESPERS_PROMPTS;
 
   return (
     <main className="relative h-dvh overflow-hidden flex flex-col bg-paper text-ink">
       <PaperSurface />
 
       <header className="sticky top-0 z-20 bg-paper/95 hairline-b">
-        <div className="mx-auto max-w-[1240px] w-full px-6 sm:px-10 lg:px-16 py-5 sm:py-6 flex items-center justify-between gap-6">
+        <div className="mx-auto max-w-[1240px] w-full px-6 sm:px-10 lg:px-16 py-5 sm:py-6 flex items-center justify-between gap-6 flex-wrap">
           <div className="flex items-baseline gap-5 sm:gap-7 min-w-0">
             <a
               href="/"
@@ -334,12 +496,19 @@ export default function Page() {
               letters
             </Link>
           </div>
-          <RecoveryCodePill
-            code={code}
-            onUseCode={handleUseCode}
-            onStartNew={handleStartNew}
-            onForget={handleForget}
-          />
+          <div className="flex items-center gap-3 sm:gap-5">
+            <PersonaToggle
+              value={persona}
+              onChange={switchPersona}
+              disabled={streaming}
+            />
+            <RecoveryCodePill
+              code={code}
+              onUseCode={handleUseCode}
+              onStartNew={handleStartNew}
+              onForget={handleForget}
+            />
+          </div>
         </div>
       </header>
 
@@ -358,27 +527,47 @@ export default function Page() {
                 transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
                 className="pb-10"
               >
-                <div className="eyebrow mb-7">§ a quiet place</div>
-                <h1 className="display text-[clamp(34px,5.6vw,72px)] leading-[1.04] tracking-[-0.02em] text-ink">
-                  take a slow breath.
-                  <br />
-                  <span className="lowercase">what&rsquo;s been </span>
-                  <span className="script text-aubergine align-baseline mx-1 text-[1.05em]">
-                    weighing
-                  </span>
-                  <br className="hidden sm:block" />
-                  <span className="lowercase">on you tonight?</span>
-                </h1>
+                <div className="eyebrow mb-7">
+                  {persona === "gappu"
+                    ? "§ a louder room"
+                    : "§ a quiet place"}
+                </div>
+                {persona === "gappu" ? (
+                  <h1 className="display text-[clamp(34px,5.6vw,72px)] leading-[1.04] tracking-[-0.02em] text-ink">
+                    oye,&nbsp;
+                    <span
+                      className="script align-baseline mx-1 text-[1.05em]"
+                      style={{ color: "#B85A1E" }}
+                    >
+                      kya scene
+                    </span>
+                    <br />
+                    <span className="lowercase">hai aaj?</span>
+                  </h1>
+                ) : (
+                  <h1 className="display text-[clamp(34px,5.6vw,72px)] leading-[1.04] tracking-[-0.02em] text-ink">
+                    take a slow breath.
+                    <br />
+                    <span className="lowercase">what&rsquo;s been </span>
+                    <span className="script text-aubergine align-baseline mx-1 text-[1.05em]">
+                      weighing
+                    </span>
+                    <br className="hidden sm:block" />
+                    <span className="lowercase">on you tonight?</span>
+                  </h1>
+                )}
                 <p className="text-margin text-[14.5px] sm:text-[15px] leading-[1.75] mt-9 max-w-md">
-                  i&rsquo;m vespers. write what&rsquo;s true — even crooked, even
-                  half-formed. you&rsquo;re anonymous; whatever you share stays
-                  linked only to your private recovery code.
+                  {persona === "gappu"
+                    ? "Gappu here. bata bata, sab bakwaas suni jayegi. tu chalu kar, baaki main sambhal lunga."
+                    : "i’m vespers. write what’s true — even crooked, even half-formed. you’re anonymous; whatever you share stays linked only to your private recovery code."}
                 </p>
 
                 <div className="mt-14 sm:mt-16 hairline pt-3">
-                  <div className="eyebrow mb-6">openings</div>
+                  <div className="eyebrow mb-6">
+                    {persona === "gappu" ? "openers" : "openings"}
+                  </div>
                   <ol className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 max-w-3xl">
-                    {PROMPTS.map((p, i) => (
+                    {prompts.map((p, i) => (
                       <li key={p} className="hairline">
                         <button
                           onClick={() => send(p)}
@@ -409,14 +598,17 @@ export default function Page() {
             )}
           </AnimatePresence>
 
-          {messages.length > 0 && (
+          {visibleMessages.length > 0 && (
             <div className="hairline">
-              {messages.map((m) => (
+              {visibleMessages.map((m) => (
                 <MessageBubble
                   key={m.id}
                   role={m.role}
                   content={m.content}
                   pending={m.pending}
+                  // bubble style: stand-in persona takes over during a crisis
+                  // override, otherwise the thread's own persona.
+                  persona={m.replyPersona ?? m.persona}
                 />
               ))}
             </div>
@@ -427,20 +619,35 @@ export default function Page() {
       <div className="fixed bottom-0 left-0 right-0 z-20 pointer-events-none">
         <div className="h-12 bg-gradient-to-t from-paper to-transparent" />
         <div className="bg-paper hairline-t pointer-events-auto">
-          <div className="mx-auto w-full max-w-[820px] px-6 sm:px-10 lg:px-16 py-5 sm:py-6 space-y-4">
+          <div className="relative mx-auto w-full max-w-[820px] px-6 sm:px-10 lg:px-16 py-5 sm:py-6 space-y-4">
+            {persona === "gappu" && (
+              <div
+                className="absolute pointer-events-none select-none"
+                style={{ top: -56, right: 18 }}
+                aria-hidden
+              >
+                <GappuAvatar
+                  mood={gappuMood}
+                  size={84}
+                  peekTarget={inputWrapEl}
+                />
+              </div>
+            )}
             <CrisisSupport
               risk={risk}
               onDismiss={() => setRisk(null)}
             />
-            <ChatInput
-              value={input}
-              onChange={(v) => {
-                setInput(v);
-                bump();
-              }}
-              onSubmit={() => send(input)}
-              disabled={streaming}
-            />
+            <div ref={setInputWrapEl}>
+              <ChatInput
+                value={input}
+                onChange={(v) => {
+                  setInput(v);
+                  bump();
+                }}
+                onSubmit={() => send(input)}
+                disabled={streaming}
+              />
+            </div>
             <div className="eyebrow text-margin/80 text-center">
               vespers is a wellness companion · not a substitute for medical or
               emergency care
