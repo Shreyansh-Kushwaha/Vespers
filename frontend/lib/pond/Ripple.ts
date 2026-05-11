@@ -20,8 +20,13 @@ export function drawRipple(
   r: Ripple,
   now: number,
 ): void {
-  const age = now - r.bornAt;
+  // Clamp age to a sane range. age can briefly go negative when a ripple is
+  // spawned from a pointer event whose performance.now() is slightly ahead of
+  // the in-flight rAF timestamp — without this, ease-out produces a negative
+  // radius and ctx.arc throws, killing the whole render loop.
+  let age = now - r.bornAt;
   if (age >= RIPPLE_LIFE) { r.active = false; return; }
+  if (age < 0) age = 0;
 
   const k = age / RIPPLE_LIFE;
   // ease-out: rapid bloom that softens into the water

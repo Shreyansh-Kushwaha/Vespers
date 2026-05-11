@@ -20,6 +20,7 @@ export interface QualityCaps {
   maxParticles: number;
   maxLilies: number;
   maxStones: number;
+  maxFood: number;
   bgRepaintMs: number;
   enableFireflies: boolean;
   enableAudio: boolean;
@@ -33,11 +34,12 @@ export interface QualityCaps {
 const HIGH: QualityCaps = {
   tier: "high",
   dpr: 1.5,
-  maxKoi: 4,
+  maxKoi: 9,
   maxRipples: 8,
   maxParticles: 6,
   maxLilies: 3,
   maxStones: 5,
+  maxFood: 6,
   bgRepaintMs: 0,
   enableFireflies: true,
   enableAudio: true,
@@ -48,11 +50,12 @@ const HIGH: QualityCaps = {
 const MEDIUM: QualityCaps = {
   tier: "medium",
   dpr: 1.25,
-  maxKoi: 4,
+  maxKoi: 7,
   maxRipples: 6,
   maxParticles: 4,
   maxLilies: 2,
   maxStones: 4,
+  maxFood: 5,
   bgRepaintMs: 0,
   enableFireflies: true,
   enableAudio: true,
@@ -63,11 +66,12 @@ const MEDIUM: QualityCaps = {
 const LOW: QualityCaps = {
   tier: "low",
   dpr: 1,
-  maxKoi: 3,
+  maxKoi: 5,
   maxRipples: 4,
   maxParticles: 3,
   maxLilies: 1,
   maxStones: 3,
+  maxFood: 3,
   bgRepaintMs: 0,
   enableFireflies: false,
   enableAudio: true,

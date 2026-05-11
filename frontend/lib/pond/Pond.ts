@@ -5,7 +5,10 @@ import {
 import {
   type Ripple, createRipple, drawRipple,
 } from "./Ripple";
-import { type Koi, createKoi, drawKoi, updateKoi } from "./Koi";
+import {
+  type Koi, buildKoiCatalog, createKoi, drawKoi, updateKoi,
+  koiContainsPoint, scareKoi,
+} from "./Koi";
 import {
   type Particle, createParticle, drawParticle, updateParticle,
   spawnFirefly, spawnPetal,
@@ -14,8 +17,14 @@ import {
   type LilyPad, drawLily, makeLilyPads, updateLilies,
 } from "./Lily";
 import { type Stone, drawStone, makeStones } from "./Stones";
+import {
+  type Food, createFood, drawFood, spawnFood, updateFood,
+} from "./Food";
 import { PondAudio } from "./Audio";
 import { IdleScheduler } from "./Idle";
+
+const SCARE_RADIUS = 220;
+const SCARE_RADIUS_SQ = SCARE_RADIUS * SCARE_RADIUS;
 
 const COLORS = {
   water: "#0B1A33",
@@ -57,9 +66,12 @@ export class Pond {
   private particles: Pool<Particle>;
   private lilies: LilyPad[] = [];
   private stones: Stone[] = [];
+  private foods: Pool<Food>;
 
   private audio: PondAudio;
   private idle: IdleScheduler;
+
+  private foodMode = false;
 
   private running = false;
   private visible = true;
@@ -90,6 +102,7 @@ export class Pond {
 
     this.ripples = new Pool<Ripple>(this.caps.maxRipples, createRipple);
     this.particles = new Pool<Particle>(this.caps.maxParticles, createParticle);
+    this.foods = new Pool<Food>(this.caps.maxFood, createFood);
 
     this.audio = new PondAudio(opts.muted ?? true);
     this.idle = new IdleScheduler(performance.now(), {
@@ -135,17 +148,53 @@ export class Pond {
   isMuted(): boolean { return this.audio.isMuted(); }
   tier(): QualityCaps { return this.caps; }
 
+  setFoodMode(b: boolean): void { this.foodMode = b; }
+  isFoodMode(): boolean { return this.foodMode; }
+
   // ── input ───────────────────────────────────────────────────────────
 
   private handlePointer = (e: PointerEvent): void => {
     const rect = this.canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    this.spawnRipple(x, y, 1);
     this.audio.start();
-    this.audio.splash(0.6);
     this.lastInputAt = performance.now();
     this.idle.bump(this.lastInputAt);
+
+    // Food mode: drop a pellet. No curiosity ripple — the fish are drawn by
+    // the food itself. Very soft audio cue.
+    if (this.foodMode) {
+      this.spawnFoodAt(x, y);
+      this.audio.splash(0.18);
+      return;
+    }
+
+    // Otherwise, hit-test the koi. A click ON a fish should scare nearby fish
+    // (and NOT spawn an attracting ripple, which would just pull them back to
+    // the click point and produce the "vibrating on top of the ripple" bug).
+    let hit = false;
+    for (let i = 0; i < this.koi.length; i++) {
+      if (koiContainsPoint(this.koi[i], x, y)) { hit = true; break; }
+    }
+    if (hit) {
+      for (let i = 0; i < this.koi.length; i++) {
+        const k = this.koi[i];
+        const dx = k.x - x;
+        const dy = k.y - y;
+        const dSq = dx * dx + dy * dy;
+        if (dSq < SCARE_RADIUS_SQ) {
+          const intensity = 1 - Math.sqrt(dSq) / SCARE_RADIUS;
+          scareKoi(k, x, y, Math.max(0.4, intensity));
+        }
+      }
+      // Quieter splash — the fish darting away is the main feedback.
+      this.audio.splash(0.35);
+      return;
+    }
+
+    // Clean miss on water: curiosity ripple as before.
+    this.spawnRipple(x, y, 1);
+    this.audio.splash(0.6);
   };
 
   // ── world setup ─────────────────────────────────────────────────────
@@ -180,8 +229,10 @@ export class Pond {
 
   private populate(): void {
     this.koi.length = 0;
+    const catalog = buildKoiCatalog(this.caps.maxKoi);
     for (let i = 0; i < this.caps.maxKoi; i++) {
-      this.koi.push(createKoi(i, this.w, this.h));
+      const { hue, pattern } = catalog[i];
+      this.koi.push(createKoi(i, this.w, this.h, hue, pattern));
     }
     // Stones are static — drawn each frame but never updated. Built once.
     this.stones = makeStones(this.caps.maxStones, this.w, this.h);
@@ -198,6 +249,11 @@ export class Pond {
     r.bornAt = performance.now();
     r.strength = strength;
     r.ringCount = 2;
+  }
+
+  private spawnFoodAt(x: number, y: number): void {
+    const f = this.foods.acquire();
+    spawnFood(f, x, y, performance.now());
   }
 
   private spawnPetalFlurry(): void {
@@ -265,12 +321,30 @@ export class Pond {
 
     updateLilies(this.lilies, dt, now, this.w, this.h);
 
+    // Update food pellets first so the koi steering this frame sees their
+    // freshest positions (pellets sink slowly between frames).
+    const foodItems = this.foods.items;
+    for (let i = 0; i < foodItems.length; i++) {
+      const f = foodItems[i];
+      if (f.active) updateFood(f, dt, now);
+    }
+
     for (const k of this.koi) {
-      const splash = updateKoi(k, this.koi, this.ripples.items, dt, now, this.w, this.h);
+      const { splash, ate } = updateKoi(
+        k, this.koi, this.ripples.items, foodItems, dt, now, this.w, this.h,
+      );
       if (splash) {
         this.spawnRipple(k.x, k.y, 0.4);
         if (now - this.lastSplashAudioAt > 250) {
           this.audio.splash(0.25);
+          this.lastSplashAudioAt = now;
+        }
+      }
+      if (ate) {
+        // tiny ripple at the bite + soft pop audio
+        this.spawnRipple(k.x, k.y, 0.35);
+        if (now - this.lastSplashAudioAt > 200) {
+          this.audio.splash(0.2);
           this.lastSplashAudioAt = now;
         }
       }
@@ -305,6 +379,13 @@ export class Pond {
 
     // stones sit on the pond floor, beneath everything else
     for (const s of this.stones) drawStone(this.ctx, s);
+
+    // food pellets — drawn below the koi so a fish closing on a pellet
+    // visually swallows it (the body sprite passes over the dot).
+    for (let i = 0; i < foodItems.length; i++) {
+      const f = foodItems[i];
+      if (f.active) drawFood(this.ctx, f, now);
+    }
 
     for (const k of this.koi) drawKoi(this.ctx, k);
 

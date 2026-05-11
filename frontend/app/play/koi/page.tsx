@@ -6,6 +6,7 @@ import { FullscreenToggle } from "@/components/FullscreenToggle";
 import { Pond } from "@/lib/pond/Pond";
 
 const MUTE_KEY = "vespers.koi.muted";
+const FOOD_KEY = "vespers.koi.food";
 
 /**
  * The koi pond — thin React shell. All the rendering, AI, audio, and quality
@@ -16,14 +17,16 @@ export default function KoiPond() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pondRef = useRef<Pond | null>(null);
   const [muted, setMuted] = useState(true);
+  const [foodMode, setFoodMode] = useState(false);
   const [tier, setTier] = useState<string>("…");
 
-  // Hydrate the mute pref before mount so the Pond starts with the right state.
+  // Hydrate prefs before mount so the Pond starts with the right state.
   useEffect(() => {
-    const stored = typeof localStorage !== "undefined"
-      ? localStorage.getItem(MUTE_KEY)
-      : null;
-    if (stored !== null) setMuted(stored === "1");
+    if (typeof localStorage === "undefined") return;
+    const m = localStorage.getItem(MUTE_KEY);
+    if (m !== null) setMuted(m === "1");
+    const f = localStorage.getItem(FOOD_KEY);
+    if (f !== null) setFoodMode(f === "1");
   }, []);
 
   useEffect(() => {
@@ -33,11 +36,11 @@ export default function KoiPond() {
       onTierChange: (caps) => setTier(caps.tier),
     });
     pondRef.current = pond;
+    pond.setFoodMode(foodMode);
     setTier(pond.tier().tier);
     pond.start();
     return () => pond.stop();
-    // We deliberately do NOT include `muted` in the dep array — the Pond is
-    // instantiated once and reflects mute state via `setMuted`.
+    // Pond is instantiated once; prefs are forwarded via setMuted/setFoodMode.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -47,6 +50,15 @@ export default function KoiPond() {
     pondRef.current?.setMuted(next);
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(MUTE_KEY, next ? "1" : "0");
+    }
+  }
+
+  function toggleFood() {
+    const next = !foodMode;
+    setFoodMode(next);
+    pondRef.current?.setFoodMode(next);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(FOOD_KEY, next ? "1" : "0");
     }
   }
 
@@ -81,6 +93,17 @@ export default function KoiPond() {
             </span>
 
             <button
+              onClick={toggleFood}
+              aria-pressed={foodMode}
+              aria-label={foodMode ? "stop feeding the koi" : "feed the koi"}
+              className="text-paper/85 hover:text-paper text-[11px] uppercase tracking-[0.22em] inline-flex items-center gap-2 transition-colors"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              <FoodIcon on={foodMode} />
+              {foodMode ? "feeding" : "throw food"}
+            </button>
+
+            <button
               onClick={toggleMute}
               aria-pressed={!muted}
               aria-label={muted ? "turn sound on" : "turn sound off"}
@@ -102,7 +125,9 @@ export default function KoiPond() {
             className="text-paper/60 text-[12.5px] italic max-w-sm leading-relaxed"
             style={{ fontFamily: "var(--font-fraunces)" }}
           >
-            tap the water. the koi will come, in their own time.
+            {foodMode
+              ? "tap the water to scatter food. the koi will come."
+              : "tap the water — they'll come. tap a koi — they scatter."}
             {tier === "low" && (
               <span className="block text-paper/35 text-[10px] uppercase tracking-[0.22em] mt-2"
                 style={{ fontFamily: "var(--font-mono)" }}>
@@ -137,6 +162,27 @@ function SoundIcon({ muted }: { muted: boolean }) {
         <path d="M9 4 L11 8 M11 4 L9 8" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
       ) : (
         <path d="M9 4 Q 10.5 6 9 8" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+      )}
+    </svg>
+  );
+}
+
+function FoodIcon({ on }: { on: boolean }) {
+  // Three pellets falling — solid when feeding, outlined when off.
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+      {on ? (
+        <>
+          <circle cx="3" cy="3" r="1.3" fill="currentColor" />
+          <circle cx="7" cy="6" r="1.3" fill="currentColor" />
+          <circle cx="4.5" cy="9" r="1.3" fill="currentColor" />
+        </>
+      ) : (
+        <>
+          <circle cx="3" cy="3" r="1.3" fill="none" stroke="currentColor" strokeWidth="1.1" />
+          <circle cx="7" cy="6" r="1.3" fill="none" stroke="currentColor" strokeWidth="1.1" />
+          <circle cx="4.5" cy="9" r="1.3" fill="none" stroke="currentColor" strokeWidth="1.1" />
+        </>
       )}
     </svg>
   );
