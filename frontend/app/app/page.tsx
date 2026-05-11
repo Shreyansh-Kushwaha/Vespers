@@ -5,7 +5,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { AnimatePresence, motion } from "framer-motion";
 import { ChatInput } from "@/components/ChatInput";
 import {
-  GappuAvatar, looksLikeLaughter, type GappuMood,
+  GappuAvatar, detectReactions, looksLikeLaughter,
+  type GappuMood, type GappuReaction, type GappuReactionEvent,
 } from "@/components/GappuAvatar";
 import { MessageBubble, type ChatRole, type Persona } from "@/components/MessageBubble";
 import { PersonaToggle } from "@/components/PersonaToggle";
@@ -90,6 +91,15 @@ export default function Page() {
   const [closingOpen, setClosingOpen] = useState(false);
   const [persona, setPersonaState] = useState<Persona>("vespers");
   const [gappuMood, setGappuMood] = useState<GappuMood>("idle");
+  const [gappuReaction, setGappuReaction] = useState<GappuReactionEvent | null>(null);
+  const [gappuFirstMessage, setGappuFirstMessage] = useState(false);
+  const [gappuError, setGappuError] = useState(false);
+  const [gappuCrisis, setGappuCrisis] = useState(false);
+  // Click / drag / fall state for the interactive avatar.
+  const [gappuDazed, setGappuDazed] = useState(false);
+  const [gappuFallen, setGappuFallen] = useState(false);
+  const reactionIdRef = useRef(0);
+  const reactionsFiredRef = useRef<Set<GappuReaction>>(new Set());
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -246,7 +256,20 @@ export default function Page() {
       setMessages((m) => [...m, userMsg, assistantMsg]);
       setInput("");
       setStreaming(true);
-      if (requestedPersona === "gappu") setGappuMood("thinking");
+      if (requestedPersona === "gappu") {
+        setGappuMood("thinking");
+        // Hello wave fires on the very first message of a fresh gappu thread.
+        const noGappuYet = !messages.some(
+          (m) => (m.persona ?? "vespers") === "gappu",
+        );
+        if (noGappuYet) {
+          setGappuFirstMessage(true);
+          setTimeout(() => setGappuFirstMessage(false), 2400);
+        }
+        setGappuError(false);
+        setGappuCrisis(false);
+        reactionsFiredRef.current = new Set();
+      }
       bump();
 
       try {
@@ -279,6 +302,7 @@ export default function Page() {
         const effective = res.headers.get("X-Vespers-Persona");
         const effectivePersona: Persona = effective === "gappu" ? "gappu" : "vespers";
         if (effectivePersona !== requestedPersona) {
+          if (requestedPersona === "gappu") setGappuCrisis(true);
           setMessages((m) => {
             const withNotice: ChatMsg[] = [...m];
             const idx = withNotice.findIndex((x) => x.id === assistantMsg.id);
@@ -342,6 +366,17 @@ export default function Page() {
             setGappuMood("laughing");
             laughResetId = setTimeout(() => setGappuMood("talking"), 1600);
           }
+          // Stream content reactions — fire each type at most once per response.
+          if (driveAvatar) {
+            const found = detectReactions(acc);
+            for (const r of found) {
+              if (reactionsFiredRef.current.has(r)) continue;
+              reactionsFiredRef.current.add(r);
+              reactionIdRef.current += 1;
+              setGappuReaction({ type: r, id: reactionIdRef.current });
+              break; // one trigger per chunk feels less spammy
+            }
+          }
           setMessages((m) =>
             m.map((msg) =>
               msg.id === assistantMsg.id
@@ -368,6 +403,10 @@ export default function Page() {
               : msg,
           ),
         );
+        if (requestedPersona === "gappu") {
+          setGappuError(true);
+          setTimeout(() => setGappuError(false), 1400);
+        }
       } finally {
         setStreaming(false);
         // Don't strand the mascot in "thinking" if the stream never started.
@@ -375,7 +414,7 @@ export default function Page() {
         bump();
       }
     },
-    [bump, code, persona, streaming],
+    [bump, code, persona, streaming, messages],
   );
 
   const handleUseCode = useCallback(async (newCode: string) => {
@@ -621,17 +660,61 @@ export default function Page() {
         <div className="bg-paper hairline-t pointer-events-auto">
           <div className="relative mx-auto w-full max-w-[820px] px-6 sm:px-10 lg:px-16 py-5 sm:py-6 space-y-4">
             {persona === "gappu" && (
-              <div
-                className="absolute pointer-events-none select-none"
-                style={{ top: -56, right: 18 }}
+              <motion.div
+                drag
+                dragMomentum={false}
+                dragElastic={0}
+                dragSnapToOrigin
+                onTap={() => {
+                  // Click without drag → "beat" Gappu
+                  if (gappuDazed || gappuFallen) return;
+                  setGappuDazed(true);
+                  setTimeout(() => setGappuDazed(false), 900);
+                }}
+                onDragStart={() => setGappuDazed(false)}
+                onDragEnd={() => {
+                  // Release → fall + dazed
+                  setGappuFallen(true);
+                  setGappuDazed(true);
+                  setTimeout(() => {
+                    setGappuFallen(false);
+                    setGappuDazed(false);
+                  }, 2400);
+                }}
+                className="absolute select-none cursor-grab active:cursor-grabbing"
+                style={{ top: -56, right: 18, touchAction: "none" }}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.95 }}
                 aria-hidden
               >
-                <GappuAvatar
-                  mood={gappuMood}
-                  size={84}
-                  peekTarget={inputWrapEl}
-                />
-              </div>
+                <motion.div
+                  animate={
+                    gappuFallen
+                      ? { rotate: [0, 180, 220, 250, 240], y: [0, 60, 80, 76, 80] }
+                      : gappuDazed
+                      ? { x: [-3, 3, -2, 2, 0], rotate: [-3, 3, -2, 2, 0] }
+                      : { rotate: 0, y: 0, x: 0 }
+                  }
+                  transition={
+                    gappuFallen
+                      ? { duration: 1.6, ease: "easeOut", times: [0, 0.35, 0.55, 0.75, 1] }
+                      : gappuDazed
+                      ? { duration: 0.45 }
+                      : { type: "spring", stiffness: 220, damping: 18 }
+                  }
+                >
+                  <GappuAvatar
+                    mood={gappuMood}
+                    size={84}
+                    peekTarget={inputWrapEl}
+                    reactionEvent={gappuReaction}
+                    firstMessage={gappuFirstMessage}
+                    errorMode={gappuError}
+                    crisisOverride={gappuCrisis}
+                    dazed={gappuDazed || gappuFallen}
+                  />
+                </motion.div>
+              </motion.div>
             )}
             <CrisisSupport
               risk={risk}
