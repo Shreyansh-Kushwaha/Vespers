@@ -6,25 +6,36 @@
   html, body {
     height: 100%;
   }
+  /* Paper is the default surface — every route in the app uses it. Without
+   * this default, a brief unmount-before-remount gap during client-side
+   * navigation flashes a dark background between routes. The .paper-surface
+   * class is kept as an explicit (idempotent) marker so any route that opts
+   * out can override it with .dark-surface. */
   body {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    background: #07080d;
-    color: #e9ecf3;
+    color-scheme: light;
+    background: #FFE6C9;
+    color: #0B1A33;
   }
-  /* Light surface for the marketing landing — opt-in via the .paper-surface class */
   body.paper-surface {
     color-scheme: light;
     background: #FFE6C9;
     color: #0B1A33;
   }
-  ::selection {
-    background: rgba(154, 140, 255, 0.35);
-    color: #fff;
+  /* Opt-in dark surface — for future routes that want the old dark canvas. */
+  body.dark-surface {
+    color-scheme: dark;
+    background: #07080d;
+    color: #e9ecf3;
   }
-  body.paper-surface ::selection {
+  ::selection {
     background: rgba(11, 37, 69, 0.18);
     color: #0B1A33;
+  }
+  body.dark-surface ::selection {
+    background: rgba(154, 140, 255, 0.35);
+    color: #fff;
   }
 }
 
