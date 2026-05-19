@@ -1,4 +1,4 @@
-import type { Session, SessionMemory } from "./memory.js";
+import type { Persona, Session, SessionMemory } from "./memory.js";
 import type { RiskAssessment } from "./risk.js";
 
 export const VESPERS_SYSTEM_PROMPT = `You are "Vespers", a calm, emotionally intelligent AI wellness support assistant.
@@ -217,6 +217,32 @@ export function buildCrisisDirective(risk: RiskAssessment): string {
     "PRESENCE DIRECTIVE",
     "The user's most recent message contains language suggesting elevated emotional distress. Respond with calm presence and validation. Acknowledge what they shared in their own words. If it feels right, gently encourage reaching toward a trusted person or a helpline — but do not lecture, do not list resources, and do not ask them to prove they are safe. Stay short, stay close. Avoid toxic positivity.",
   ].join("\n");
+}
+
+/**
+ * Directive for an opener turn fired by a manual persona switch — the new
+ * persona walks in and speaks first in their own voice.
+ */
+export function buildPersonaSwitchOpener(
+  persona: Persona,
+  hasPriorHistory: boolean,
+): string {
+  const lines: string[] = ["OPENING DIRECTIVE — YOU SPEAK FIRST THIS TURN"];
+  if (persona === "gappu") {
+    lines.push(
+      "The user just switched the persona toggle to YOU (Gappu). Vespers may have been talking before — now you walk in. Arrive in your Hinglish voice in 1–3 short lines: announce yourself, set the energy, drop one playful opener or question. No therapy framing, no 'how can I help you'. Make it feel like a cousin sliding into the chair next to them.",
+    );
+  } else {
+    lines.push(
+      "The user just switched the persona toggle to YOU (Vespers). Gappu may have been talking before — now you walk in. Greet softly in 1–3 short lines: name your arrival, settle the room, and ask one gentle open question. No lists. No resources.",
+    );
+  }
+  if (hasPriorHistory) {
+    lines.push(
+      "The user has talked with you before. If the prior memory makes it natural, you may reference it lightly — never summarise past sessions back at them.",
+    );
+  }
+  return lines.join("\n");
 }
 
 /**
