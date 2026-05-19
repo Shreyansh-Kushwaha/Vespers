@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { FullscreenToggle } from "@/components/FullscreenToggle";
 import { Pond } from "@/lib/pond/Pond";
+import { AmbientLoop } from "@/lib/AmbientLoop";
 
 const MUTE_KEY = "vespers.koi.muted";
 const FOOD_KEY = "vespers.koi.food";
@@ -16,6 +17,7 @@ const FOOD_KEY = "vespers.koi.food";
 export default function KoiPond() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pondRef = useRef<Pond | null>(null);
+  const ambientRef = useRef<AmbientLoop | null>(null);
   const [muted, setMuted] = useState(true);
   const [foodMode, setFoodMode] = useState(false);
   const [tier, setTier] = useState<string>("…");
@@ -39,7 +41,12 @@ export default function KoiPond() {
     pond.setFoodMode(foodMode);
     setTier(pond.tier().tier);
     pond.start();
-    return () => pond.stop();
+    ambientRef.current = new AmbientLoop({ src: "/audio/koi.mp3", muted: true, volume: 0.22 });
+    return () => {
+      pond.stop();
+      ambientRef.current?.destroy();
+      ambientRef.current = null;
+    };
     // Pond is instantiated once; prefs are forwarded via setMuted/setFoodMode.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -48,6 +55,8 @@ export default function KoiPond() {
     const next = !muted;
     setMuted(next);
     pondRef.current?.setMuted(next);
+    ambientRef.current?.start();
+    ambientRef.current?.setMuted(next);
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(MUTE_KEY, next ? "1" : "0");
     }

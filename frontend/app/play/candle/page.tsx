@@ -6,6 +6,7 @@ import { PaperSurface } from "@/components/marketing/PaperSurface";
 import { FullscreenToggle } from "@/components/FullscreenToggle";
 import { Candle, type CandleData, type CandlePhase } from "./Candle";
 import { CandleAudio } from "./audio";
+import { AmbientLoop } from "@/lib/AmbientLoop";
 import {
   type CandleMemory, describeMemory, loadMemory, saveMemory,
 } from "./storage";
@@ -62,6 +63,7 @@ export default function CandlePage() {
   const [carrying, setCarrying] = useState<{ fromId: string; x: number; y: number } | null>(null);
 
   const audioRef = useRef<CandleAudio | null>(null);
+  const ambientRef = useRef<AmbientLoop | null>(null);
   const lastInputRef = useRef<number>(performance.now());
   const lastBellAtRef = useRef<number>(0);
   const haloRef = useRef<HTMLDivElement>(null);
@@ -75,7 +77,12 @@ export default function CandlePage() {
       if (stored !== null) setMuted(stored === "1");
     } catch { /* fine */ }
     audioRef.current = new CandleAudio(true);
-    return () => audioRef.current?.destroy();
+    ambientRef.current = new AmbientLoop({ src: "/audio/candle.mp3", muted: true, volume: 0.24 });
+    return () => {
+      audioRef.current?.destroy();
+      ambientRef.current?.destroy();
+      ambientRef.current = null;
+    };
   }, []);
 
   // ── 1Hz tick: drives burn meter, dim, halo, bell ──────────────────
@@ -252,6 +259,8 @@ export default function CandlePage() {
       const next = !m;
       audioRef.current?.start();
       audioRef.current?.setMuted(next);
+      ambientRef.current?.start();
+      ambientRef.current?.setMuted(next);
       try { localStorage.setItem(MUTE_KEY, next ? "1" : "0"); } catch {}
       return next;
     });

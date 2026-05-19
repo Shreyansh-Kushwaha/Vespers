@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PaperSurface } from "@/components/marketing/PaperSurface";
 import { FullscreenToggle } from "@/components/FullscreenToggle";
+import { AmbientLoop } from "@/lib/AmbientLoop";
 
 type Phase = "inhale" | "hold-in" | "exhale" | "hold-out" | "inhale-2";
 
@@ -60,6 +61,7 @@ const TECHNIQUES: Technique[] = [
 
 const TECH_KEY = "vespers.breathe.technique";
 const COUNT_KEY = "vespers.breathe.cycles";
+const MUTE_KEY = "vespers.breathe.muted";
 
 export default function BreathePage() {
   const [techKey, setTechKey] = useState<string>("box");
@@ -72,8 +74,29 @@ export default function BreathePage() {
   const [stepIdx, setStepIdx] = useState(0);
   const [elapsed, setElapsed] = useState(0); // seconds into the current step
   const [cycles, setCycles] = useState(0);
+  const [muted, setMuted] = useState(true);
   const rafRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
+  const audioRef = useRef<AmbientLoop | null>(null);
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(MUTE_KEY);
+      if (v !== null) setMuted(v === "1");
+    } catch { /* ignore */ }
+    audioRef.current = new AmbientLoop({ src: "/audio/breathe.mp3", muted: true, volume: 0.28 });
+    return () => { audioRef.current?.destroy(); audioRef.current = null; };
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    setMuted((m) => {
+      const next = !m;
+      audioRef.current?.start();
+      audioRef.current?.setMuted(next);
+      try { localStorage.setItem(MUTE_KEY, next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   // Hydrate prefs.
   useEffect(() => {
@@ -182,6 +205,15 @@ export default function BreathePage() {
         </Link>
         <div className="flex items-center gap-5 sm:gap-6">
           <span className="eyebrow hidden sm:inline">§ iv — the breath</span>
+          <button
+            onClick={toggleMute}
+            aria-pressed={!muted}
+            aria-label={muted ? "turn sound on" : "turn sound off"}
+            className="eyebrow ink-link no-underline inline-flex items-center gap-2"
+          >
+            <BreatheSoundIcon muted={muted} />
+            {muted ? "sound off" : "sound on"}
+          </button>
           <FullscreenToggle />
         </div>
       </header>
@@ -367,5 +399,24 @@ export default function BreathePage() {
         }
       `}</style>
     </main>
+  );
+}
+
+function BreatheSoundIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+      <path
+        d="M2 4.5 L2 7.5 L4 7.5 L7 10 L7 2 L4 4.5 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+      {muted ? (
+        <path d="M9 4 L11 8 M11 4 L9 8" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+      ) : (
+        <path d="M9 4 Q 10.5 6 9 8" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+      )}
+    </svg>
   );
 }

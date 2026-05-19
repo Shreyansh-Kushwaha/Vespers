@@ -124,8 +124,22 @@ export default function PlayIndex() {
         </ol>
       </section>
 
-      <footer className="mx-auto max-w-[1240px] w-full px-6 sm:px-10 lg:px-16 py-10 hairline flex items-center justify-between">
-        <span className="eyebrow">vespers · play · vol. i</span>
+      <footer className="mx-auto max-w-[1240px] w-full px-6 sm:px-10 lg:px-16 py-10 hairline flex items-end justify-between gap-6 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <span className="eyebrow">vespers · play · vol. i</span>
+          <span className="text-margin text-[11px] leading-relaxed">
+            ambient music ·{" "}
+            <a
+              href="https://incompetech.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ink-link"
+            >
+              Kevin MacLeod
+            </a>
+            , CC BY 4.0
+          </span>
+        </div>
         <Link href="/app" className="eyebrow ink-link">
           ← back to the conversation
         </Link>

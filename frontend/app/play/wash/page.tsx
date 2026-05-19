@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { PaperSurface } from "@/components/marketing/PaperSurface";
 import { FullscreenToggle } from "@/components/FullscreenToggle";
+import { AmbientLoop } from "@/lib/AmbientLoop";
+
+const MUTE_KEY = "vespers.wash.muted";
 
 /**
  * Watercolor washes.
@@ -41,6 +44,25 @@ export default function Watercolor() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [colorIdx, setColorIdx] = useState(0);
   const colorRef = useRef(PALETTE[0].color);
+  const [muted, setMuted] = useState(true);
+  const audioRef = useRef<AmbientLoop | null>(null);
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(MUTE_KEY);
+      if (v !== null) setMuted(v === "1");
+    } catch { /* ignore */ }
+    audioRef.current = new AmbientLoop({ src: "/audio/wash.mp3", muted: true });
+    return () => { audioRef.current?.destroy(); audioRef.current = null; };
+  }, []);
+
+  function toggleMute() {
+    const next = !muted;
+    setMuted(next);
+    audioRef.current?.start();
+    audioRef.current?.setMuted(next);
+    try { localStorage.setItem(MUTE_KEY, next ? "1" : "0"); } catch { /* ignore */ }
+  }
 
   useEffect(() => {
     colorRef.current = PALETTE[colorIdx].color;
@@ -190,13 +212,23 @@ export default function Watercolor() {
           >
             ← play
           </Link>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-5 sm:gap-6">
             <span
               className="text-margin text-[11px] uppercase tracking-[0.22em] hidden sm:inline"
               style={{ fontFamily: "var(--font-mono)" }}
             >
               § ii — watercolor washes
             </span>
+            <button
+              onClick={toggleMute}
+              aria-pressed={!muted}
+              aria-label={muted ? "turn sound on" : "turn sound off"}
+              className="text-margin hover:text-ink text-[11px] uppercase tracking-[0.22em] inline-flex items-center gap-2 transition-colors"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
+              <WashSoundIcon muted={muted} />
+              {muted ? "sound off" : "sound on"}
+            </button>
             <FullscreenToggle />
           </div>
         </header>
@@ -244,4 +276,23 @@ export default function Watercolor() {
 
 function replaceAlpha(rgba: string, alpha: number): string {
   return rgba.replace(/rgba\(([^)]+),\s*[\d.]+\)/, `rgba($1, ${alpha})`);
+}
+
+function WashSoundIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+      <path
+        d="M2 4.5 L2 7.5 L4 7.5 L7 10 L7 2 L4 4.5 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+      {muted ? (
+        <path d="M9 4 L11 8 M11 4 L9 8" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+      ) : (
+        <path d="M9 4 Q 10.5 6 9 8" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+      )}
+    </svg>
+  );
 }
