@@ -186,7 +186,7 @@ function CompanionCard({
         }
       >
         <a
-          href="/feel"
+          href="/app"
           className={[
             "ink-link display text-[15px] sm:text-[16px] tracking-tight no-underline",
             isGappu ? "" : "text-aubergine",

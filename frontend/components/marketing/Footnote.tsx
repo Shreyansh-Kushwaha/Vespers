@@ -57,7 +57,7 @@ export function Footnote() {
               the play room →
             </a>
             <span className="eyebrow text-margin/40">·</span>
-            <a href="/feel" className="eyebrow ink-link">
+            <a href="/app" className="eyebrow ink-link">
               enter the quiet place →
             </a>
           </div>

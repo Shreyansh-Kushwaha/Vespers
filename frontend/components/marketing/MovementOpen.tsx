@@ -19,7 +19,7 @@ export function MovementOpen() {
           </a>
           <span className="eyebrow text-margin/40 lg:hidden">·</span>
           <a
-            href="/feel"
+            href="/app"
             className="eyebrow ink-link no-underline lg:text-[13.5px] lg:tracking-[0.24em] lg:px-4 lg:py-2 lg:rounded-full lg:bg-[#0B1A33] lg:text-[#FFE6C9] lg:hover:opacity-90 transition-opacity"
           >
             enter →
