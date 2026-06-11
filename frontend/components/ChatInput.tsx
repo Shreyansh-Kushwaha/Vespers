@@ -181,6 +181,7 @@ export function ChatInput({ value, onChange, onSubmit, disabled }: Props) {
             transcribing ? "transcribing…" : "write what's true — even crooked, even half-formed."
           }
           rows={1}
+          maxLength={4000}
           className="flex-1 resize-none bg-transparent outline-none placeholder:text-margin/70 text-ink display italic text-[16px] sm:text-[17px] leading-[1.7] max-h-48"
         />
         {supported && (

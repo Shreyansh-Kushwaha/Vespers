@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChatInput } from "@/components/ChatInput";
 import {
@@ -13,6 +13,7 @@ import { PersonaToggle } from "@/components/PersonaToggle";
 import { RecoveryCodePill } from "@/components/RecoveryCodePill";
 import { CrisisSupport } from "@/components/CrisisSupport";
 import { ClosingRitual } from "@/components/ClosingRitual";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { PaperSurface } from "@/components/marketing/PaperSurface";
 import { apiUrl } from "@/lib/api";
 import { useInactivity } from "@/lib/inactivity";
@@ -23,6 +24,10 @@ interface ChatMsg {
   role: ChatRole;
   content: string;
   pending?: boolean;
+  failed?: boolean;
+  /** Stores the user text that triggered this assistant message, for retry. */
+  retryText?: string;
+  ts?: number;
   /** Thread the message belongs to. Drives per-persona filtering. */
   persona?: Persona;
   /** Only set on assistant messages when a crisis override made the reply
@@ -113,11 +118,18 @@ export default function Page() {
   const reactionIdRef = useRef(0);
   const reactionsFiredRef = useRef<Set<GappuReaction>>(new Set());
 
+  const [confirmForget, setConfirmForget] = useState(false);
+
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [inputWrapEl, setInputWrapEl] = useState<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
   const isProgrammaticScrollRef = useRef(false);
+
+  // Tracks whether the Gappu thread has any messages — used inside `send` to
+  // decide whether to fire the first-message hello wave, without `messages`
+  // itself living in send's dependency array.
+  const hasGappuThreadRef = useRef(false);
 
   // Hydrate from saved recovery code.
   useEffect(() => {
@@ -137,15 +149,20 @@ export default function Page() {
     if (saved) {
       setCode(saved);
       setPersonaState(readPersona(saved));
-      fetch(apiUrl(`/api/session?code=${encodeURIComponent(saved)}`))
+      fetch(apiUrl("/api/session"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: saved }),
+      })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (data?.ok && Array.isArray(data.messages)) {
             const restored: ChatMsg[] = data.messages.map(
-              (m: { role: string; content: string; persona?: string; replyPersona?: string }) => ({
+              (m: { role: string; content: string; ts?: number; persona?: string; replyPersona?: string }) => ({
                 id: uid(),
                 role: m.role === "model" ? "assistant" : "user",
                 content: m.content,
+                ts: m.ts,
                 persona: m.persona === "gappu" ? "gappu" : "vespers",
                 replyPersona:
                   m.replyPersona === "gappu" || m.replyPersona === "vespers"
@@ -163,6 +180,11 @@ export default function Page() {
       setHydrated(true);
     }
   }, []);
+
+  // Keep hasGappuThreadRef in sync so send() doesn't need messages in its deps.
+  useEffect(() => {
+    hasGappuThreadRef.current = messages.some((m) => (m.persona ?? "vespers") === "gappu");
+  }, [messages]);
 
   // Track that a manual persona switch should trigger the new persona to
   // speak first. The actual opener is fired from a useEffect once `persona`
@@ -275,12 +297,14 @@ export default function Page() {
       if (!isOpener && !trimmed) return;
 
       const requestedPersona = persona;
+      const sentAt = Date.now();
       const userMsg: ChatMsg | null = isOpener
         ? null
         : {
             id: uid(),
             role: "user",
             content: trimmed,
+            ts: sentAt,
             persona: requestedPersona,
           };
       const assistantMsg: ChatMsg = {
@@ -297,10 +321,7 @@ export default function Page() {
       if (requestedPersona === "gappu") {
         setGappuMood("thinking");
         // Hello wave fires on the very first message of a fresh gappu thread.
-        const noGappuYet = !messages.some(
-          (m) => (m.persona ?? "vespers") === "gappu",
-        );
-        if (noGappuYet) {
+        if (!hasGappuThreadRef.current) {
           setGappuFirstMessage(true);
           setTimeout(() => setGappuFirstMessage(false), 2400);
         }
@@ -436,13 +457,26 @@ export default function Page() {
           // crisis turn — keep mascot calm
           setGappuMood("idle");
         }
+        // Stamp completed timestamp on the assistant message.
+        const completedAt = Date.now();
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === assistantMsg.id ? { ...msg, ts: completedAt } : msg,
+          ),
+        );
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Something interrupted the connection.";
         setMessages((m) =>
           m.map((msg) =>
             msg.id === assistantMsg.id
-              ? { ...msg, pending: false, content: `[${message}]` }
+              ? {
+                  ...msg,
+                  pending: false,
+                  failed: true,
+                  retryText: isOpener ? undefined : trimmed,
+                  content: message,
+                }
               : msg,
           ),
         );
@@ -457,7 +491,7 @@ export default function Page() {
         bump();
       }
     },
-    [bump, code, persona, streaming, messages],
+    [bump, code, persona, streaming],
   );
 
   // Persona-switch opener: when the user toggles persona, the new persona
@@ -478,15 +512,20 @@ export default function Page() {
       /* ignore */
     }
     try {
-      const res = await fetch(apiUrl(`/api/session?code=${encodeURIComponent(newCode)}`));
+      const res = await fetch(apiUrl("/api/session"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: newCode }),
+      });
       if (res.ok) {
         const data = await res.json();
         if (data?.ok && Array.isArray(data.messages)) {
           setMessages(
-            data.messages.map((m: { role: string; content: string; persona?: string; replyPersona?: string }) => ({
+            data.messages.map((m: { role: string; content: string; ts?: number; persona?: string; replyPersona?: string }) => ({
               id: uid(),
               role: m.role === "model" ? "assistant" : "user",
               content: m.content,
+              ts: m.ts,
               persona: m.persona === "gappu" ? "gappu" : "vespers",
               replyPersona:
                 m.replyPersona === "gappu" || m.replyPersona === "vespers"
@@ -521,15 +560,12 @@ export default function Page() {
     }
   }, []);
 
-  const handleForget = useCallback(async () => {
-    const confirmed =
-      typeof window === "undefined"
-        ? true
-        : window.confirm(
-            "Forget this session permanently?\n\nThis deletes the stored chat history from the server and clears the recovery code from this device. It cannot be undone.",
-          );
-    if (!confirmed) return;
+  const handleForget = useCallback(() => {
+    setConfirmForget(true);
+  }, []);
 
+  const doForget = useCallback(async () => {
+    setConfirmForget(false);
     const codeToDelete = code;
     setCode(null);
     setMessages([]);
@@ -546,19 +582,35 @@ export default function Page() {
     }
     if (codeToDelete) {
       try {
-        await fetch(apiUrl(`/api/session?code=${encodeURIComponent(codeToDelete)}`), {
-          method: "DELETE",
-        });
+        await fetch(
+          apiUrl(`/api/session?code=${encodeURIComponent(codeToDelete)}`),
+          { method: "DELETE" },
+        );
       } catch {
         /* best-effort */
       }
     }
   }, [code]);
 
+  const retryMessage = useCallback(
+    (failedMsgId: string, retryText: string) => {
+      setMessages((m) => {
+        const idx = m.findIndex((x) => x.id === failedMsgId);
+        if (idx < 0) return m;
+        const toRemove = new Set([failedMsgId]);
+        if (idx > 0 && m[idx - 1].role === "user") toRemove.add(m[idx - 1].id);
+        return m.filter((x) => !toRemove.has(x.id));
+      });
+      send(retryText);
+    },
+    [send],
+  );
+
   // Per-persona thread: only show messages belonging to the active persona.
   // Legacy messages without a persona field are treated as Vespers.
-  const visibleMessages = messages.filter(
-    (m) => (m.persona ?? "vespers") === persona,
+  const visibleMessages = useMemo(
+    () => messages.filter((m) => (m.persona ?? "vespers") === persona),
+    [messages, persona],
   );
   const empty = hydrated && visibleMessages.length === 0;
   const prompts = persona === "gappu" ? GAPPU_PROMPTS : VESPERS_PROMPTS;
@@ -699,9 +751,14 @@ export default function Page() {
                   role={m.role}
                   content={m.content}
                   pending={m.pending}
-                  // bubble style: stand-in persona takes over during a crisis
-                  // override, otherwise the thread's own persona.
+                  failed={m.failed}
+                  ts={m.ts}
                   persona={m.replyPersona ?? m.persona}
+                  onRetry={
+                    m.failed && m.retryText
+                      ? () => retryMessage(m.id, m.retryText!)
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -857,6 +914,16 @@ export default function Page() {
         open={closingOpen}
         onDismiss={() => setClosingOpen(false)}
         onSubmit={onClosingSubmit}
+      />
+
+      <ConfirmModal
+        open={confirmForget}
+        title="forget this session?"
+        body="This permanently deletes your chat history from the server and removes the recovery code from this device. It cannot be undone."
+        confirmLabel="forget permanently"
+        cancelLabel="keep it"
+        onConfirm={doForget}
+        onCancel={() => setConfirmForget(false)}
       />
     </main>
   );

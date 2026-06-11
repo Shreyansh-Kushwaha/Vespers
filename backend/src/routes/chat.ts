@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { stream } from "hono/streaming";
-import { AzureOpenAI } from "openai";
+import { getOpenAI } from "../lib/openai.js";
 import {
   buildCrisisDirective,
   buildMemoryContext,
@@ -48,21 +48,22 @@ export async function chatHandler(c: Context) {
     return c.text("Invalid JSON", 400);
   }
 
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
-  const apiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-12-01-preview";
-
-  if (!apiKey || !endpoint || !deployment) {
+  if (
+    !process.env.AZURE_OPENAI_API_KEY ||
+    !process.env.AZURE_OPENAI_ENDPOINT ||
+    !process.env.AZURE_OPENAI_DEPLOYMENT
+  ) {
     return c.text(
       "Vespers is not configured yet. Set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_DEPLOYMENT in .env and restart the server.",
       503,
     );
   }
 
+
   const userText = (body.message || "").trim();
   const isOpener = body.opener === true;
   if (!isOpener && !userText) return c.text("Empty message", 400);
+  if (!isOpener && userText.length > 4000) return c.text("Message too long (max 4000 characters)", 400);
 
   // Default persona is "vespers" — keeps legacy clients (no persona field)
   // behaving exactly as before.
@@ -136,7 +137,7 @@ export async function chatHandler(c: Context) {
           crisisDirective: composedCrisisDirective,
         });
 
-  const client = new AzureOpenAI({ apiKey, endpoint, deployment, apiVersion });
+  const client = getOpenAI();
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: systemContent },
@@ -170,7 +171,7 @@ export async function chatHandler(c: Context) {
     let full = "";
     try {
       const completion = await client.chat.completions.create({
-        model: deployment,
+        model: process.env.AZURE_OPENAI_DEPLOYMENT!,
         messages,
         stream: true,
         temperature,

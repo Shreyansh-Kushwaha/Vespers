@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,16 +12,26 @@ interface Props {
   role: ChatRole;
   content: string;
   pending?: boolean;
+  failed?: boolean;
+  ts?: number;
   persona?: Persona;
+  onRetry?: () => void;
 }
 
-export function MessageBubble({ role, content, pending, persona }: Props) {
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 5_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000) || 1} min ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+export function MessageBubble({ role, content, pending, failed, ts, persona, onRetry }: Props) {
+  const [copied, setCopied] = useState(false);
   const isUser = role === "user";
   const isSystem = role === "system";
   const isGappu = persona === "gappu" && role === "assistant";
 
-  // System notices are a slim, centered line — not a chat bubble. Used for
-  // persona-switch announcements.
   if (isSystem) {
     return (
       <motion.div
@@ -41,12 +52,22 @@ export function MessageBubble({ role, content, pending, persona }: Props) {
 
   const label = isUser ? "you" : isGappu ? "gappu" : "vespers";
 
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8, filter: "blur(6px)" }}
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      className="grid grid-cols-[56px_1fr] sm:grid-cols-[80px_1fr] gap-x-5 sm:gap-x-8 hairline pt-5 sm:pt-6 pb-6 sm:pb-7"
+      className="group grid grid-cols-[56px_1fr] sm:grid-cols-[80px_1fr] gap-x-5 sm:gap-x-8 hairline pt-5 sm:pt-6 pb-6 sm:pb-7"
     >
       <span
         className={[
@@ -56,7 +77,7 @@ export function MessageBubble({ role, content, pending, persona }: Props) {
       >
         {label}
       </span>
-      <div>
+      <div className="relative">
         {pending && !content ? (
           <div className="flex items-center gap-1.5 py-2">
             <span className="dot-paper" />
@@ -89,6 +110,37 @@ export function MessageBubble({ role, content, pending, persona }: Props) {
           >
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
           </div>
+        )}
+
+        {/* Copy button — fades in on group hover, hidden for pending/system */}
+        {!isUser && !pending && content && (
+          <button
+            onClick={handleCopy}
+            aria-label={copied ? "Copied" : "Copy response"}
+            className="absolute top-1 right-0 opacity-0 group-hover:opacity-100 transition-opacity eyebrow text-[10px] text-margin/70 hover:text-aubergine"
+          >
+            {copied ? "copied" : "copy"}
+          </button>
+        )}
+
+        {/* Failure state + retry */}
+        {failed && onRetry && (
+          <div className="mt-3 flex items-center gap-4">
+            <span className="eyebrow text-[10px] text-margin/60">connection interrupted</span>
+            <button
+              onClick={onRetry}
+              className="eyebrow text-[10px] text-aubergine hover:text-violetInk transition-colors"
+            >
+              retry →
+            </button>
+          </div>
+        )}
+
+        {/* Timestamp — fades in on group hover */}
+        {ts && !pending && (
+          <p className="mt-2 eyebrow text-[10px] text-margin/50 opacity-0 group-hover:opacity-100 transition-opacity select-none">
+            {relativeTime(ts)}
+          </p>
         )}
       </div>
     </motion.div>

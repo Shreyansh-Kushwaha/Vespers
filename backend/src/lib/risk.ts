@@ -23,6 +23,8 @@ interface PhraseRule {
 }
 
 // Order matters: acute > elevated > moderate. First strong match wins.
+// Patterns cover both English and Hinglish (Roman-script Hindi) since Gappu's
+// user base writes in code-switched Hindi/English.
 const RULES: PhraseRule[] = [
   {
     category: "self_harm",
@@ -42,6 +44,13 @@ const RULES: PhraseRule[] = [
       /\b(slit|cut) my (wrists|throat)\b/i,
       /\btake (all )?(the |my )?pills\b/i,
       /\bjump off\b/i,
+      // Hinglish acute
+      /\bmarna (chahta|chahti|chahte) (hoon|hai|ho)\b/i,
+      /\bjaan (de|dena|deta|deti) (chahta|chahti|chahte|hoon|hai)\b/i,
+      /\bkhatam kar (loon|lena|leta|leti)\b/i,
+      /\bzindagi (khatam|khatm) (karna|kar loon|kar leta|kar leti)\b/i,
+      /\bnahi jeena\b/i,
+      /\bmar (jaana|jaana chahta|jaana chahti|jana)\b/i,
     ],
   },
   {
@@ -55,6 +64,13 @@ const RULES: PhraseRule[] = [
       /\bi('?m| am) (a )?(burden|worthless|useless)\b/i,
       /\beveryone (would|will) be better off without me\b/i,
       /\bno (point|reason) (in )?(living|being here)\b/i,
+      // Hinglish elevated
+      /\bkhud ko (hurt|nuksaan|takleef|harm) karna\b/i,
+      /\bapne aap ko (hurt|nuksaan|khatam) karna\b/i,
+      /\bsab (ke liye|ke waste) burden (hoon|hu)\b/i,
+      /\bkoi nahi (chahega|chahta|chahti) mujhe\b/i,
+      /\bjeena nahi (chahta|chahti|chahte)\b/i,
+      /\bji nahi chahta\b/i,
     ],
   },
   {
@@ -66,6 +82,10 @@ const RULES: PhraseRule[] = [
       /\bdomestic (violence|abuse)\b/i,
       /\bafraid (to|of) (go(ing)? )?home\b/i,
       /\bnot safe (at|in) (home|here)\b/i,
+      // Hinglish abuse
+      /\b(mujhe|mujhe|use) (maarta|maarte|maari|peetta|peette) (hai|hain|hoon)\b/i,
+      /\bghar (mein|pe) (safe|surakshit) nahi\b/i,
+      /\bghar jaane (se|mein) darr (lagta|hai)\b/i,
     ],
   },
   {
@@ -77,6 +97,11 @@ const RULES: PhraseRule[] = [
       /\bheart racing\b/i,
       /\bchest tight(ening)?\b/i,
       /\bi('?m| am) (going to|gonna) (faint|pass out|lose it)\b/i,
+      // Hinglish panic
+      /\bsaans (nahi aa|nahi le) (raha|rahi|pa raha|pa rahi)\b/i,
+      /\bdil (bahut|tez|zyada) (dhadak|dhadak raha)\b/i,
+      /\bpanic (aa|ho) (raha|rahi|gaya|gayi)\b/i,
+      /\b(bahut|zyada) ghabra (raha|rahi|gaya|gayi)\b/i,
     ],
   },
   {
@@ -88,6 +113,13 @@ const RULES: PhraseRule[] = [
       /\b(can'?t|cannot) (do|take) (this|it) (anymore|any more)\b/i,
       /\b(everything|nothing) (is )?(pointless|hopeless)\b/i,
       /\bi('?m| am) (so )?(empty|numb|exhausted) (anymore)?\b/i,
+      // Hinglish hopelessness
+      /\bkuch (nahi|nahin) bachaa?\b/i,
+      /\bsab (khatam|khatm|bekar|bekaar) (ho gaya|ho gayi|hai)\b/i,
+      /\bhaar (gaya|gayi|maan liya|maan li)\b/i,
+      /\bthak (gaya|gayi) (hoon|hu) (sab se|zindagi se|sab kuch se)\b/i,
+      /\bkoi ummeed nahi\b/i,
+      /\bkuch nahi hoga (mere|mera|meri)\b/i,
     ],
   },
   {
@@ -98,6 +130,10 @@ const RULES: PhraseRule[] = [
       /\bcrying( all the time)?\b/i,
       /\b(deeply|so) (sad|alone|lost)\b/i,
       /\bdon'?t know (what to do|how to keep going)\b/i,
+      // Hinglish moderate
+      /\bbahut (rona|rota|roti) (aa raha|aa rahi|ho raha|ho rahi)\b/i,
+      /\bsamajh nahi (aa|aata|aati) (kya karoon|kya karun|kya karo)\b/i,
+      /\b(bahut|zyada) (akela|akeli|sad|udaas) (feel|lag raha|lag rahi)\b/i,
     ],
   },
 ];

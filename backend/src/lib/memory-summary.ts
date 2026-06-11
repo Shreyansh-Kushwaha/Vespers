@@ -1,4 +1,3 @@
-import { AzureOpenAI } from "openai";
 import {
   EMPTY_MEMORY,
   replaceMemoryAndMessages,
@@ -6,6 +5,7 @@ import {
   type Session,
   type SessionMemory,
 } from "./memory.js";
+import { getOpenAI, getSummariseDeployment } from "./openai.js";
 
 // Trigger summarisation when message count crosses this; keep newest TAIL
 // turns verbatim and roll the older ones into structured memory.
@@ -88,7 +88,10 @@ function mergeMemory(prev: SessionMemory, next: ParsedMemory): SessionMemory {
 
 function transcriptFromMessages(msgs: Message[]): string {
   return msgs
-    .map((m) => `[${m.role === "user" ? "USER" : "VESPERS"}] ${m.content}`)
+    .map((m) => {
+      const speaker = m.role === "user" ? "USER" : (m.persona ?? "vespers").toUpperCase();
+      return `[${speaker}] ${m.content}`;
+    })
     .join("\n\n");
 }
 
@@ -108,12 +111,13 @@ export function shouldSummarise(session: Session): boolean {
 export async function summariseAndCompact(session: Session): Promise<void> {
   if (!shouldSummarise(session)) return;
 
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
-  const apiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-12-01-preview";
-  if (!apiKey || !endpoint || !deployment) {
+  if (!process.env.AZURE_OPENAI_API_KEY || !process.env.AZURE_OPENAI_ENDPOINT) {
     console.warn("[memory-summary] azure not configured; skipping");
+    return;
+  }
+  const deployment = getSummariseDeployment();
+  if (!deployment) {
+    console.warn("[memory-summary] no deployment configured; skipping");
     return;
   }
 
@@ -124,7 +128,7 @@ export async function summariseAndCompact(session: Session): Promise<void> {
   const transcript = transcriptFromMessages(older);
   const priorMemoryJson = JSON.stringify(session.memory ?? EMPTY_MEMORY);
 
-  const client = new AzureOpenAI({ apiKey, endpoint, deployment, apiVersion });
+  const client = getOpenAI();
 
   let parsed: ParsedMemory;
   try {

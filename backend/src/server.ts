@@ -3,7 +3,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { chatHandler } from "./routes/chat.js";
-import { sessionDeleteHandler, sessionHandler } from "./routes/session.js";
+import { sessionDeleteHandler, sessionHandler, sessionLoadHandler } from "./routes/session.js";
+import { checkRateLimit } from "./lib/rate-limit.js";
 import { transcribeHandler } from "./routes/transcribe.js";
 import {
   createLetterHandler,
@@ -40,6 +41,8 @@ app.use(
       "X-Vespers-Risk-Level",
       "X-Vespers-Risk-Category",
       "X-Vespers-Show-Support",
+      "X-Vespers-Persona",
+      "X-Vespers-Persona-Requested",
     ],
     credentials: false,
     maxAge: 600,
@@ -65,10 +68,29 @@ app.get("/health", (c) =>
   }),
 );
 
-app.post("/api/chat", chatHandler);
+app.post("/api/chat", async (c, next) => {
+  const ip =
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip") ||
+    "unknown";
+  if (!checkRateLimit(`chat:${ip}`, 12, 60_000)) {
+    return c.text("Too many messages — give it a moment.", 429);
+  }
+  return next();
+}, chatHandler);
 app.get("/api/session", sessionHandler);
+app.post("/api/session", sessionLoadHandler);
 app.delete("/api/session", sessionDeleteHandler);
-app.post("/api/transcribe", transcribeHandler);
+app.post("/api/transcribe", async (c, next) => {
+  const ip =
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip") ||
+    "unknown";
+  if (!checkRateLimit(`transcribe:${ip}`, 20, 60_000)) {
+    return c.text("Too many transcription requests.", 429);
+  }
+  return next();
+}, transcribeHandler);
 app.post("/api/rituals/closing", closingRitualHandler);
 app.get("/api/resources", resourcesHandler);
 app.get("/api/letters", listLettersHandler);
