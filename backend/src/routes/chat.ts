@@ -189,6 +189,7 @@ export async function chatHandler(c: Context) {
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Something went quiet on our side.";
+      console.error("[chat] completion error:", err);
       await s.write(`\n\n[Vespers had trouble responding: ${msg}]`);
     } finally {
       const now = Date.now();
