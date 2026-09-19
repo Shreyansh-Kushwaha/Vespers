@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { AzureOpenAI } from "openai";
+import { getGemini, getGeminiModel } from "../lib/gemini.js";
 import { getSupabase, LETTERS_TABLE } from "../lib/supabase.js";
 import { isRecoveryCode, normalizeCode } from "../lib/recovery-code.js";
 
@@ -194,12 +194,8 @@ export async function whisperLetterHandler(c: Context) {
   if (!code) return c.json({ ok: false, error: "invalid_code" }, 400);
   const id = c.req.param("id");
 
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
-  const apiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-12-01-preview";
-  if (!apiKey || !endpoint || !deployment) {
-    return c.json({ ok: false, error: "azure_not_configured" }, 503);
+  if (!process.env.GEMINI_API_KEY) {
+    return c.json({ ok: false, error: "gemini_not_configured" }, 503);
   }
 
   const sb = getSupabase();
@@ -218,21 +214,28 @@ export async function whisperLetterHandler(c: Context) {
       : letter.mode;
   const content = (letter.content ?? "").slice(-4000);
 
-  const client = new AzureOpenAI({ apiKey, endpoint, deployment, apiVersion });
-  const completion = await client.chat.completions.create({
-    model: deployment,
-    messages: [
-      { role: "system", content: WHISPER_PROMPT.replace("{{MODE}}", mode) },
+  const ai = getGemini();
+  const response = await ai.models.generateContent({
+    model: getGeminiModel(),
+    contents: [
       {
         role: "user",
-        content: content
-          ? `Letter so far:\n\n${content}\n\nOffer one quiet prompt.`
-          : `The writer has not started yet. Offer a single quiet opening prompt for the mode "${mode}".`,
+        parts: [
+          {
+            text: content
+              ? `Letter so far:\n\n${content}\n\nOffer one quiet prompt.`
+              : `The writer has not started yet. Offer a single quiet opening prompt for the mode "${mode}".`,
+          },
+        ],
       },
     ],
-    temperature: 0.75,
-    max_completion_tokens: 140,
+    config: {
+      systemInstruction: WHISPER_PROMPT.replace("{{MODE}}", mode),
+      temperature: 0.75,
+      maxOutputTokens: 140,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
   });
-  const text = (completion.choices?.[0]?.message?.content ?? "").trim();
+  const text = (response.text ?? "").trim();
   return c.json({ ok: true, whisper: text });
 }

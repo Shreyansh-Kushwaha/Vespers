@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { stream } from "hono/streaming";
-import { getOpenAI } from "../lib/openai.js";
+import { getGemini, getGeminiModel, toGeminiContents } from "../lib/gemini.js";
 import {
   buildCrisisDirective,
   buildMemoryContext,
@@ -48,13 +48,9 @@ export async function chatHandler(c: Context) {
     return c.text("Invalid JSON", 400);
   }
 
-  if (
-    !process.env.AZURE_OPENAI_API_KEY ||
-    !process.env.AZURE_OPENAI_ENDPOINT ||
-    !process.env.AZURE_OPENAI_DEPLOYMENT
-  ) {
+  if (!process.env.GEMINI_API_KEY) {
     return c.text(
-      "Vespers is not configured yet. Set AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_DEPLOYMENT in .env and restart the server.",
+      "Vespers is not configured yet. Set GEMINI_API_KEY in .env and restart the server.",
       503,
     );
   }
@@ -137,18 +133,16 @@ export async function chatHandler(c: Context) {
           crisisDirective: composedCrisisDirective,
         });
 
-  const client = getOpenAI();
+  const ai = getGemini();
 
-  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: systemContent },
-    ...session.messages.map((m) => ({
-      role: (m.role === "model" ? "assistant" : "user") as "user" | "assistant",
-      content: m.content,
-    })),
-  ];
+  const turns = session.messages.map((m) => ({
+    role: (m.role === "model" ? "model" : "user") as "user" | "model",
+    content: m.content,
+  }));
   if (!isOpener) {
-    messages.push({ role: "user", content: userText });
+    turns.push({ role: "user", content: userText });
   }
+  const contents = toGeminiContents(turns);
 
   c.header("Content-Type", "text/plain; charset=utf-8");
   c.header("Cache-Control", "no-cache, no-transform");
@@ -170,17 +164,23 @@ export async function chatHandler(c: Context) {
   return stream(c, async (s) => {
     let full = "";
     try {
-      const completion = await client.chat.completions.create({
-        model: process.env.AZURE_OPENAI_DEPLOYMENT!,
-        messages,
-        stream: true,
-        temperature,
-        top_p: 0.95,
-        max_completion_tokens: 700,
+      const result = await ai.models.generateContentStream({
+        model: getGeminiModel(),
+        contents,
+        config: {
+          systemInstruction: systemContent,
+          temperature,
+          topP: 0.95,
+          maxOutputTokens: 700,
+          // Fast, low-latency conversational replies don't need internal
+          // reasoning — and "thoughts" otherwise eat into maxOutputTokens
+          // and can silently truncate the visible reply.
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       });
 
-      for await (const chunk of completion) {
-        const text = chunk.choices?.[0]?.delta?.content ?? "";
+      for await (const chunk of result) {
+        const text = chunk.text ?? "";
         if (text) {
           full += text;
           await s.write(text);

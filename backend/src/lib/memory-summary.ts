@@ -5,7 +5,7 @@ import {
   type Session,
   type SessionMemory,
 } from "./memory.js";
-import { getOpenAI, getSummariseDeployment } from "./openai.js";
+import { getGemini, getSummariseModel } from "./gemini.js";
 
 // Trigger summarisation when message count crosses this; keep newest TAIL
 // turns verbatim and roll the older ones into structured memory.
@@ -104,20 +104,15 @@ export function shouldSummarise(session: Session): boolean {
 }
 
 /**
- * Take the older portion of the session, summarise it via Azure OpenAI's
+ * Take the older portion of the session, summarise it via Gemini's
  * structured JSON output, merge into existing memory, and replace messages
  * with just the newest tail. Best-effort: errors are logged, not thrown.
  */
 export async function summariseAndCompact(session: Session): Promise<void> {
   if (!shouldSummarise(session)) return;
 
-  if (!process.env.AZURE_OPENAI_API_KEY || !process.env.AZURE_OPENAI_ENDPOINT) {
-    console.warn("[memory-summary] azure not configured; skipping");
-    return;
-  }
-  const deployment = getSummariseDeployment();
-  if (!deployment) {
-    console.warn("[memory-summary] no deployment configured; skipping");
+  if (!process.env.GEMINI_API_KEY) {
+    console.warn("[memory-summary] gemini not configured; skipping");
     return;
   }
 
@@ -128,24 +123,31 @@ export async function summariseAndCompact(session: Session): Promise<void> {
   const transcript = transcriptFromMessages(older);
   const priorMemoryJson = JSON.stringify(session.memory ?? EMPTY_MEMORY);
 
-  const client = getOpenAI();
+  const ai = getGemini();
 
   let parsed: ParsedMemory;
   try {
-    const completion = await client.chat.completions.create({
-      model: deployment,
-      messages: [
-        { role: "system", content: SUMMARISER_PROMPT },
+    const response = await ai.models.generateContent({
+      model: getSummariseModel(),
+      contents: [
         {
           role: "user",
-          content: `PRIOR_STRUCTURED_MEMORY:\n${priorMemoryJson}\n\nOLDER_TRANSCRIPT:\n${transcript}\n\nReturn the updated structured memory as JSON.`,
+          parts: [
+            {
+              text: `PRIOR_STRUCTURED_MEMORY:\n${priorMemoryJson}\n\nOLDER_TRANSCRIPT:\n${transcript}\n\nReturn the updated structured memory as JSON.`,
+            },
+          ],
         },
       ],
-      response_format: { type: "json_object" },
-      temperature: 0.4,
-      max_completion_tokens: 700,
+      config: {
+        systemInstruction: SUMMARISER_PROMPT,
+        responseMimeType: "application/json",
+        temperature: 0.4,
+        maxOutputTokens: 700,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
     });
-    const raw = completion.choices?.[0]?.message?.content ?? "{}";
+    const raw = response.text ?? "{}";
     parsed = JSON.parse(raw) as ParsedMemory;
   } catch (err) {
     console.warn(

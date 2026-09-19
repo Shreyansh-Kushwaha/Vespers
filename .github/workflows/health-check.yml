@@ -6,7 +6,7 @@ name: Health check
 # plus a real request to the app's own health endpoint.
 on:
   schedule:
-    - cron: "0 6 * * *" # once a day
+    - cron: "0 6 */4 * *" # every 4 days
   workflow_dispatch:
 
 jobs:
