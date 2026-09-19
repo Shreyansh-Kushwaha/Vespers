@@ -1,0 +1,44 @@
+name: Health check
+
+# Keeps the Supabase free-tier project from auto-pausing after 7 days of no
+# API activity, and confirms the deployed app is actually reachable.
+# Not simulated user traffic — a real row in a dedicated health_checks table
+# plus a real request to the app's own health endpoint.
+on:
+  schedule:
+    - cron: "0 6 * * *" # once a day
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase (writes a row to health_checks)
+        run: |
+          status=$(curl -s -o /tmp/supabase.out -w "%{http_code}" -X POST \
+            "${SUPABASE_URL}/rest/v1/health_checks" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d '{}')
+          echo "Supabase responded with $status"
+          cat /tmp/supabase.out
+          if [ "$status" -ge 300 ]; then
+            echo "::error::Supabase health check failed with status $status"
+            exit 1
+          fi
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: Ping deployed app (frontend -> backend -> config check)
+        run: |
+          status=$(curl -s -o /tmp/app.out -w "%{http_code}" \
+            "https://vespers-io.vercel.app/api/health")
+          echo "App health endpoint responded with $status"
+          cat /tmp/app.out
+          if [ "$status" -ge 300 ]; then
+            echo "::error::App health check failed with status $status"
+            exit 1
+          fi
