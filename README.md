@@ -20,6 +20,18 @@
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/landing.jpg" width="100%" alt="Vespers landing page — a quiet place for stress, anxiety, sadness, and the tangled days"/>
+</p>
+<p align="center">
+  <img src="docs/screenshots/session.jpg" width="49%" alt="A Vespers chat session — calm persona, recovery-code header, message composer"/>
+  <img src="docs/screenshots/koi-pond.jpg" width="49%" alt="The Play Room — an interactive koi pond, one of the quiet objects to escape to"/>
+</p>
+
+---
+
 ## At a glance
 
 - **Two personas, one private thread** — Vespers (calm, CBT-flavoured) and Gappu (warm, mischievous, Hinglish). Switchable inside the chat; each persona has its own filtered transcript.
